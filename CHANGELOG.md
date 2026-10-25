@@ -9,6 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.8.2] - 2026-10-25
+
+### Changed
+
+- Simplified the documentation by consistently using "empty lines" instead of "empty lines" to describe omitted lines in requests, with no impact on breaking behavior, API or CLI changes, or security. [648ca5e1](https://github.com/electrocucaracha/k8s-docs-review-app/commit/648ca5e1731aac22e0fc7274716fa8cc4d3b7601)
+
+## [4.8.1] - 2026-10-25
+
+### Changed
+
+- Optimized large LLM review pairs for analysis by introducing heading-aligned excerpts of about 12,000 characters each, with independent deadlines and merged findings, improving clarity on review scaling, limits, and error handling for large documents. [6ae4c1a3](https://github.com/electrocucaracha/k8s-docs-review-app/commit/6ae4c1a3f5e879dac05c0d96b29bf995e7e8cc1e)
+
+## [4.8.0] - 2026-10-25
+
+### Added
+
+- Enabled large document reviews to proceed by splitting content into heading-aligned excerpts when the provider's character limit is exceeded. [4cf5bd2a](https://github.com/electrocucaracha/k8s-docs-review-app/commit/4cf5bd2a25b564ded45d60d4b361e217468325fc)
+
+## [4.7.0] - 2026-10-25
+
+### Added
+
+- Enabled a new npm script, "test:coverage", to measure code coverage locally without additional setup, allowing developers to run Node's built-in test coverage feature on review and LLM test files. [e5a607d2](https://github.com/electrocucaracha/k8s-docs-review-app/commit/e5a607d25fcfccfd7701cdff9f38254911492e73)
+
+## [4.6.1] - 2026-10-25
+
+### Changed
+
+- Optimized code quality for TypeScript sources by enabling oxlint in the CI pipeline. [06d899e5](https://github.com/electrocucaracha/k8s-docs-review-app/commit/06d899e5187d288cfd9d61c0edd8c58f94804d43)
+
+## [4.6.0] - 2026-10-25
+
+### Added
+
+- Enabled automatic updates for Node dependencies with the latest versions, ensuring all major dependency types are handled by the update script. [a833ebdd](https://github.com/electrocucaracha/k8s-docs-review-app/commit/a833ebddb28ab3bab7013ddc16eb6afc562054ae)
+
+## [4.5.1] - 2026-10-25
+
+### Changed
+
+- Updated the ai-prepare-commit-msg pre-commit hook to v20.6.0 to ensure compatibility with recent features and benefit from upstream maintenance, including the latest improvements and fixes. [8be909c8](https://github.com/electrocucaracha/k8s-docs-review-app/commit/8be909c844860d435c0d9c5123d5357d0b1f1cb7)
+
+## [4.5.0] - 2026-10-25
+
+### Added
+
+- Updated the changelog with detailed release notes for versions 2.1.0 through 4.4.0, providing improved traceability and clarity for contributors and better release management. [224c7771](https://github.com/electrocucaracha/k8s-docs-review-app/commit/224c77711ff426f000780a17cca40e17cd1a0259)
+
 ## [4.4.0] - 2026-10-25
 
 ### Added
