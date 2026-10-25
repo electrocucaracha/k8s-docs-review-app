@@ -21,3 +21,4 @@ if ! command -v uv >/dev/null; then
 fi
 uvx pre-commit autoupdate
 uv run --no-project --with git+https://github.com/electrocucaracha/gh-updater.git gh-updater .
+npm update --latest
