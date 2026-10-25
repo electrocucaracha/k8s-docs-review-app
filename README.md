@@ -1,5 +1,17 @@
 # Kubernetes Docs Review
 
+<!-- markdown-link-check-disable-next-line -->
+
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![GitHub Super-Linter](https://github.com/electrocucaracha/k8s-docs-review-app/workflows/Lint%20Code%20Base/badge.svg)](https://github.com/marketplace/actions/super-linter)
+
+<!-- markdown-link-check-disable-next-line -->
+
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+![visitors](https://visitor-badge.laobi.icu/badge?page_id=electrocucaracha.k8s-docs-review-app)
+[![Scc Code Badge](https://sloc.xyz/github/electrocucaracha/k8s-docs-review-app?category=code)](https://github.com/boyter/scc/)
+[![Scc COCOMO Badge](https://sloc.xyz/github/electrocucaracha/k8s-docs-review-app?category=cocomo)](https://github.com/boyter/scc/)
+
 [Documentation](https://electrocucaracha.github.io/k8s-docs-review-app/)
 | [First review](docs/tutorials/first-review.md)
 | [Contributing](CONTRIBUTING.md)
