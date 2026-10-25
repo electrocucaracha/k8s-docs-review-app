@@ -1,0 +1,27 @@
+# SPDX-license-identifier: Apache-2.0
+##############################################################################
+# Copyright (c) 2026
+# All rights reserved. This program and the accompanying materials
+# are made available under the terms of the Apache License, Version 2.0
+# which accompanies this distribution, and is available at
+# http://www.apache.org/licenses/LICENSE-2.0
+##############################################################################
+name: "Maintenance: Scheduled Dependency Version Updates"
+# yamllint disable-line rule:truthy
+on:
+  schedule:
+    - cron: "0 0 * * 5"
+  workflow_dispatch:
+permissions: read-all
+concurrency:
+  group: scheduled-version-updates
+  cancel-in-progress: true
+jobs:
+  check-versions:
+    name: Update Managed Version Files
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: electrocucaracha/gh-workflows/.github/workflows/update.yml@8f0fa8c0acf90de07569a66d774498c3101d235f # v12.1.1
+    secrets:
+      WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
