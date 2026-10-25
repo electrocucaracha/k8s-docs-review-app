@@ -331,7 +331,7 @@ test("rejects oversized provider responses and propagates cancellation", async (
         throw new Error("Should not call fetch");
       },
     }),
-    /cancelled or timed out/,
+    /was cancelled/,
   );
 });
 
@@ -498,12 +498,18 @@ test("excerpt requests send only their lines and merge findings", async () => {
     const result = await requestLLMReview({ ...request, english, spanish });
     assert.ok(prompts.length > 2);
     assert.match(prompts[0], /excerpt 1 of/);
+    assert.match(prompts[0], /"reasoning_effort":"none"/);
     assert.doesNotMatch(prompts[0], /Section 39/);
-    assert.equal(result.findings[0].title, "LLM review incomplete");
-    assert.match(result.findings[0].detail, /timed out/);
+    // The timed-out excerpt is halved twice before being reported.
+    const skipped = result.findings.filter(
+      (item) => item.title === "LLM review incomplete",
+    );
+    assert.equal(skipped.length, 4);
+    assert.match(skipped[0].detail, /timed out/);
+    assert.equal(result.findings[0], skipped[0]);
     // Duplicate findings from different excerpts are merged.
     assert.equal(result.findings.filter((item) => item.line === 1).length, 1);
-    assert.equal(result.findings.length, prompts.length + 1);
+    assert.equal(result.findings.length, prompts.length + 4);
   } finally {
     globalThis.fetch = originalFetch;
   }

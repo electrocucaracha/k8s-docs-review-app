@@ -43,6 +43,12 @@ export type LLMRequest = {
 
 // Roughly 3,000-4,000 tokens of document text per request.
 export const excerptCharacterBudget = 12_000;
+// Local models generate slowly and Ollama's default context is small.
+export const localExcerptCharacterBudget = 6_000;
+
+export function logLLM(entry: Record<string, unknown>): void {
+  console.info("[llm]", JSON.stringify(entry));
+}
 
 function sectionStarts(lines: string[]): number[] {
   const starts = [0];
@@ -318,45 +324,102 @@ export function parseLLMResult(
   };
 }
 
+function halveExcerpt({ english, spanish, part, parts }: Excerpt): Excerpt[] {
+  if (english[1] - english[0] < 2 && spanish[1] - spanish[0] < 2) return [];
+  const middle = ([start, end]: [number, number]) =>
+    start + Math.floor((end - start) / 2);
+  const [en, es] = [middle(english), middle(spanish)];
+  return [
+    { english: [english[0], en], spanish: [spanish[0], es], part, parts },
+    { english: [en, english[1]], spanish: [es, spanish[1]], part, parts },
+  ];
+}
+
 /**
  * Reviews large documents excerpt by excerpt (map) and merges the findings
- * (reduce). Failed excerpts are reported instead of discarding the others.
+ * (reduce). Timed-out excerpts are halved and retried; excerpts that still
+ * fail are reported instead of discarding the others.
  */
 export async function requestLLMReview(
   request: LLMRequest,
 ): Promise<LLMResult> {
-  const excerpts =
-    request.action === "review" && !request.excerpt
-      ? planExcerpts(request.english ?? "", request.spanish ?? "")
-      : [];
-  if (excerpts.length < 2) return requestSingleReview(request);
-  const outcomes = await Promise.allSettled(
-    excerpts.map((excerpt) => requestSingleReview({ ...request, excerpt })),
+  if (request.action !== "review" || request.excerpt)
+    return requestSingleReview(request);
+  const english = request.english ?? "";
+  const spanish = request.spanish ?? "";
+  const planned = planExcerpts(
+    english,
+    spanish,
+    request.settings.provider === "ollama"
+      ? localExcerptCharacterBudget
+      : excerptCharacterBudget,
   );
+  const whole: Excerpt = {
+    english: [0, english.split("\n").length],
+    spanish: [0, spanish.split("\n").length],
+    part: 1,
+    parts: 1,
+  };
+  type Outcome = { excerpt: Excerpt; result?: LLMResult; error?: unknown };
+  const review = async (
+    excerpt: Excerpt | undefined,
+    depth: number,
+  ): Promise<Outcome[]> => {
+    const target = excerpt ?? whole;
+    try {
+      const result = await requestSingleReview(
+        excerpt ? { ...request, excerpt } : request,
+      );
+      return [{ excerpt: target, result }];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const halves =
+        depth < 2 && /timed out/i.test(message) ? halveExcerpt(target) : [];
+      if (!halves.length) return [{ excerpt: target, error }];
+      logLLM({
+        event: "llm.split",
+        task: request.task?.id,
+        excerpt: `${target.part}/${target.parts}`,
+        englishLines: target.english,
+        translationLines: target.spanish,
+        depth: depth + 1,
+        reason: message,
+      });
+      return (
+        await Promise.all(halves.map((half) => review(half, depth + 1)))
+      ).flat();
+    }
+  };
+  const outcomes = (
+    await Promise.all(
+      (planned.length ? planned : [undefined]).map((excerpt) =>
+        review(excerpt, 0),
+      ),
+    )
+  ).flat();
+  if (outcomes.length === 1 && outcomes[0].result) return outcomes[0].result;
   const findings: Finding[] = [];
   const skipped: Finding[] = [];
   let model = "";
   let failure: unknown;
-  outcomes.forEach((outcome, index) => {
-    if (outcome.status === "fulfilled") {
-      model = outcome.value.model;
-      findings.push(...outcome.value.findings);
+  for (const { excerpt, result, error } of outcomes) {
+    if (result) {
+      model = result.model;
+      findings.push(...result.findings);
     } else {
-      const cause: unknown = outcome.reason;
-      const excerpt = excerpts[index];
-      failure ??= cause;
+      failure ??= error;
       const [start, end] = excerpt.english;
       skipped.push({
         id: "",
         kind: "content",
         severity: "warning",
         side: "en",
-        line: Math.min(start + 1, (request.english ?? "").split("\n").length),
+        line: Math.max(1, Math.min(start + 1, whole.english[1])),
         title: "LLM review incomplete",
-        detail: `Excerpt ${excerpt.part} of ${excerpt.parts} (English lines ${start + 1}-${end}, translation lines ${excerpt.spanish[0] + 1}-${excerpt.spanish[1]}) was not reviewed: ${cause instanceof Error ? cause.message : String(cause)} Rerun this task to review it.`,
+        detail: `Excerpt ${excerpt.part} of ${excerpt.parts} (English lines ${start + 1}-${end}, translation lines ${excerpt.spanish[0] + 1}-${excerpt.spanish[1]}) was not reviewed: ${error instanceof Error ? error.message : String(error)} Rerun this task to review it.`,
       });
     }
-  });
+  }
   if (!model) throw failure;
   const seen = new Set<string>();
   const unique = findings.filter((finding) => {
@@ -385,8 +448,18 @@ const waitingRequests: (() => void)[] = [];
 
 async function requestSingleReview(request: LLMRequest): Promise<LLMResult> {
   validateSettings(request.settings);
+  const queued = Date.now();
   while (activeRequests >= request.settings.concurrency)
     await new Promise<void>((resolve) => waitingRequests.push(resolve));
+  if (Date.now() - queued >= 1_000)
+    logLLM({
+      event: "llm.queued",
+      task: request.task?.id,
+      excerpt: request.excerpt
+        ? `${request.excerpt.part}/${request.excerpt.parts}`
+        : undefined,
+      waitedMs: Date.now() - queued,
+    });
   activeRequests++;
   try {
     return await sendReview(request);
@@ -408,6 +481,7 @@ async function sendReview(request: LLMRequest): Promise<LLMResult> {
           });
     return reviewLLM(request, {
       environment,
+      log: logLLM,
       fetch: async (input, init) => {
         const outgoing = new Request(input, init);
         outgoing.signal.throwIfAborted();

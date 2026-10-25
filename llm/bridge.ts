@@ -68,6 +68,10 @@ export function llmBridge(): Plugin {
               await reviewLLM(payload, {
                 environment: process.env,
                 signal: controller.signal,
+                log: (entry) =>
+                  server.config.logger.info(`[llm] ${JSON.stringify(entry)}`, {
+                    timestamp: true,
+                  }),
               }),
             );
           } catch (error) {

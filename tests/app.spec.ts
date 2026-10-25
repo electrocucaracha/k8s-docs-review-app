@@ -1027,12 +1027,20 @@ test("language selection paginates labelled PRs and loads their translated files
                   number: index + 100,
                   title: `French update ${index}`,
                   pull_request: {},
+                  labels: [{ name: "language/fr" }],
                 }))
               : [
                   {
                     number: 43,
                     title: "French documentation",
                     pull_request: {},
+                    labels: [{ name: "language/fr" }],
+                  },
+                  {
+                    number: 44,
+                    title: "Mixed-language documentation",
+                    pull_request: {},
+                    labels: [{ name: "language/fr" }, { name: "language/es" }],
                   },
                   { number: 999, title: "Not a pull request" },
                 ],

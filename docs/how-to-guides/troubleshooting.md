@@ -58,7 +58,21 @@ For a local model under memory or processing pressure,
 set **Parallel task limit** to `1`.
 Reduce enabled tasks if necessary.
 Provider requests have a 150-second deadline within the three-minute review limit.
-Large pairs are reviewed in excerpts of about 12,000 characters, each with its own deadline.
+Large pairs are reviewed in excerpts of about 12,000 characters (6,000 for Ollama), each with its own deadline.
+An excerpt that times out is halved and retried up to twice before it is reported as
+**LLM review incomplete**. Ollama requests disable model thinking, which is the most
+common cause of slow local responses.
+
+Each request logs metadata only (no document text or credentials) with an `[llm]` prefix:
+`llm.request` (task, excerpt, line ranges, estimated prompt tokens, deadline),
+`llm.response` (elapsed time, finish reason, token usage), `llm.error`
+(`timeout`, `cancelled`, `http-<status>`, or `output-limit`), `llm.split`, and
+`llm.queued` when a request waited for a parallel slot.
+In the browser app, request, response, and error entries appear in the `npm run dev` terminal
+and split and queue entries in the browser console;
+in the desktop app, all entries appear in the webview developer console.
+A high `outputTokens` value or an `output-limit` error suggests the model is too verbose;
+a high `elapsedMs` with few tokens suggests the model is too slow for the hardware.
 Retry a failed task from **Review Tasks** without rerunning successful tasks.
 
 For document-size failures, the pair is limited to 100,000 characters;

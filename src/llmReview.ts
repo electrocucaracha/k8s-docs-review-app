@@ -21,6 +21,9 @@ Report only actionable issues supported by the provided text, at most 40 finding
 If there are no issues, return {"findings": []}. Do not return Markdown fences.
 `;
 
+// Must stay below the three-minute bridge/client limit and match the native client.
+const requestTimeoutSeconds = 150;
+
 export function validateReviewRequest(request: LLMRequest): void {
   if (!request || typeof request !== "object")
     throw new Error("Invalid LLM review request.");
@@ -94,6 +97,7 @@ export async function reviewLLM(
     fetch?: typeof fetch;
     environment?: Record<string, string | undefined>;
     signal?: AbortSignal;
+    log?: (entry: Record<string, unknown>) => void;
   } = {},
 ): Promise<LLMResult> {
   validateReviewRequest(request);
@@ -128,9 +132,10 @@ export async function reviewLLM(
     throw new Error(
       "Enter an API key in Settings or set the provider's environment variable.",
     );
+  const deadline = AbortSignal.timeout(requestTimeoutSeconds * 1_000);
   const signal = options.signal
-    ? AbortSignal.any([options.signal, AbortSignal.timeout(150_000)])
-    : AbortSignal.timeout(150_000);
+    ? AbortSignal.any([options.signal, deadline])
+    : deadline;
   let responseTooLarge = false;
   const transport: typeof fetch = async (input, init) => {
     const response = await (options.fetch ?? fetch)(input, {
@@ -202,37 +207,103 @@ export async function reviewLLM(
   const excerptNote = excerpt
     ? `\nThis request covers excerpt ${excerpt.part} of ${excerpt.parts}: English lines ${excerpt.english[0] + 1}-${excerpt.english[1]} and translation lines ${excerpt.spanish[0] + 1}-${excerpt.spanish[1]}. Other excerpts are reviewed separately and boundaries are approximate; do not report content as missing, added, or reordered only because it lies outside these ranges.`
     : "";
+  const system =
+    systemPrompt.replaceAll("Spanish", language) +
+    "\nThe translation document uses the legacy 'spanish' key and 'es' finding side regardless of its language." +
+    "\nConfigured review task:\n" +
+    (task?.instructions ??
+      `Review translation accuracy, completeness, ${language} grammar, terminology, and technical fidelity.`) +
+    excerptNote +
+    "\nReturn only the required JSON findings schema.";
+  const prompt = JSON.stringify({
+    english: numbered(english, excerpt?.english),
+    spanish: numbered(spanish, excerpt?.spanish),
+    reviewComments,
+  });
+  const maxOutputTokens = action === "test" ? 8 : 4096;
+  // Metadata only: never log documents, prompts, or credentials.
+  const context = {
+    provider,
+    model: modelId,
+    action,
+    task: task?.id,
+    excerpt: excerpt ? `${excerpt.part}/${excerpt.parts}` : undefined,
+    englishLines: excerpt?.english,
+    translationLines: excerpt?.spanish,
+  };
+  const promptCharacters =
+    action === "test" ? 0 : system.length + prompt.length;
+  const estimatedPromptTokens = Math.ceil(promptCharacters / 4);
+  const log = options.log ?? (() => {});
+  const started = Date.now();
+  log({
+    event: "llm.request",
+    ...context,
+    promptCharacters,
+    estimatedPromptTokens,
+    maxOutputTokens,
+    timeoutSeconds: requestTimeoutSeconds,
+  });
+  const describe = [
+    task && `task "${task.name}"`,
+    excerpt && `excerpt ${excerpt.part} of ${excerpt.parts}`,
+    action === "review" && `about ${estimatedPromptTokens} prompt tokens`,
+  ]
+    .filter(Boolean)
+    .join(", ");
   let text: string;
   try {
     const result = await generateText({
       model,
       ...(action === "test"
         ? { prompt: "Reply with OK." }
-        : {
-            system:
-              systemPrompt.replaceAll("Spanish", language) +
-              "\nThe translation document uses the legacy 'spanish' key and 'es' finding side regardless of its language." +
-              "\nConfigured review task:\n" +
-              (task?.instructions ??
-                `Review translation accuracy, completeness, ${language} grammar, terminology, and technical fidelity.`) +
-              excerptNote +
-              "\nReturn only the required JSON findings schema.",
-            prompt: JSON.stringify({
-              english: numbered(english, excerpt?.english),
-              spanish: numbered(spanish, excerpt?.spanish),
-              reviewComments,
-            }),
-          }),
-      maxOutputTokens: action === "test" ? 8 : 4096,
+        : { system, prompt }),
+      maxOutputTokens,
       temperature: 0.2,
       maxRetries: 0,
       abortSignal: signal,
+      // Thinking output from local models (e.g. Qwen 3) is the main cause of timeouts.
+      ...(provider === "ollama"
+        ? { providerOptions: { openai: { reasoningEffort: "none" } } }
+        : {}),
     });
+    log({
+      event: "llm.response",
+      ...context,
+      elapsedMs: Date.now() - started,
+      finishReason: result.finishReason,
+      usage: result.usage,
+    });
+    if (action === "review" && result.finishReason === "length")
+      throw new Error(
+        `The model reached the ${maxOutputTokens}-token output limit before finishing (${describe}).`,
+      );
     text = result.text;
   } catch (error) {
+    const reason = deadline.aborted
+      ? "timeout"
+      : options.signal?.aborted
+        ? "cancelled"
+        : responseTooLarge
+          ? "response-too-large"
+          : APICallError.isInstance(error)
+            ? `http-${error.statusCode ?? "unknown"}`
+            : error instanceof Error && error.message.includes("output limit")
+              ? "output-limit"
+              : "error";
+    log({
+      event: "llm.error",
+      ...context,
+      elapsedMs: Date.now() - started,
+      reason,
+    });
+    if (reason === "output-limit") throw error;
     if (responseTooLarge) throw new Error("The LLM response is too large.");
-    if (signal.aborted)
-      throw new Error("The LLM request was cancelled or timed out.");
+    if (reason === "timeout")
+      throw new Error(
+        `The LLM request timed out after ${requestTimeoutSeconds} seconds (${describe}).`,
+      );
+    if (signal.aborted) throw new Error("The LLM request was cancelled.");
     if (APICallError.isInstance(error)) {
       if (error.statusCode === 401 || error.statusCode === 403)
         throw new Error(
