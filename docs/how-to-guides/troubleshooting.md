@@ -58,6 +58,7 @@ For a local model under memory or processing pressure,
 set **Parallel task limit** to `1`.
 Reduce enabled tasks if necessary.
 Provider requests have a 150-second deadline within the three-minute review limit.
+Large pairs are reviewed in excerpts of about 12,000 characters, each with its own deadline.
 Retry a failed task from **Review Tasks** without rerunning successful tasks.
 
 For document-size failures, the pair is limited to 100,000 characters;

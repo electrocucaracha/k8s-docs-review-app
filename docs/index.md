@@ -22,7 +22,7 @@ npm ci
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173>.
+Open `http://127.0.0.1:5173`.
 The app opens an **Example workspace** with intentional translation problems.
 You do not need Python, an API key, or an Azure account to use the offline checks.
 

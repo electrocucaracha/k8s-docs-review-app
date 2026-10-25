@@ -134,6 +134,13 @@ invalidate previous LLM findings. The model receives no tools and cannot
 modify files. The pair is limited to 100,000 characters; the selected model
 must also support the supplied context. Requests time out after three minutes.
 
+To keep requests small, blank lines are omitted from prompts and pairs over
+12,000 characters are split into heading-aligned excerpts. Each excerpt is a
+separate request, sent in parallel up to the **Parallel task limit**, and their
+findings are merged and
+deduplicated. If an excerpt fails, the task keeps the other findings and adds
+an **LLM review incomplete** warning naming the unreviewed lines.
+
 ## Review tasks
 
 The default LLM tasks are translation accuracy, content completeness, Spanish
@@ -151,7 +158,8 @@ history-backed rubric updates; custom prompts are retained. Up to 20 tasks
 can be configured.
 
 The **Parallel task limit** accepts 1 through 4. It defaults to 1 for local
-Ollama workloads. Higher values submit independent tasks concurrently; the
+Ollama workloads. Higher values submit independent tasks and document excerpts
+concurrently; the limit caps all in-flight requests together. The
 provider may still queue requests internally. Multiple tasks increase token
 usage and can incur separate provider charges.
 

@@ -31,7 +31,7 @@ npm ci
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173>.
+Open `http://127.0.0.1:5173`.
 We should see **Example workspace**, an English source pane,
 an editable Spanish translation pane, and **Review findings**.
 Keep the terminal running.

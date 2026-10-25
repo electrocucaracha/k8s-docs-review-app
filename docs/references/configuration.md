@@ -97,6 +97,7 @@ The app includes no telemetry.
 | Repository index                  | 50,000 files                               |
 | Loaded Markdown                   | 100 MB total; 4 MB per document            |
 | LLM document pair                 | 100,000 characters                         |
+| LLM excerpt size                  | About 12,000 characters per request        |
 | LLM request duration              | Three minutes                              |
 | Provider HTTP deadline            | 150 seconds                                |
 | LLM request / provider response   | 1 MB each                                  |

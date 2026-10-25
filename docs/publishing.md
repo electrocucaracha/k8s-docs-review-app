@@ -28,7 +28,7 @@ bundle install
 bundle exec jekyll serve --host 127.0.0.1 --baseurl ""
 ```
 
-Open <http://127.0.0.1:4000>.
+Open `http://127.0.0.1:4000`.
 Search, navigation, and code-copy controls are supplied by the theme.
 Stop the preview with `Ctrl+C`.
 
