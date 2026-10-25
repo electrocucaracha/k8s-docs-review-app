@@ -1,33 +1,10 @@
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import path from "node:path";
 import type { Plugin } from "vite";
+import { reviewLLM, validateReviewRequest } from "../src/llmReview.js";
+import type { LLMRequest } from "../src/llm.js";
 
-export function pythonExecutable(configured: unknown, root: string): string {
-  const selected =
-    typeof configured === "string" && configured
-      ? configured
-      : process.env.K8S_DOCS_REVIEW_PYTHON;
-  const virtual = path.join(
-    root,
-    ".venv",
-    process.platform === "win32" ? "Scripts/python.exe" : "bin/python",
-  );
-  const executable =
-    selected ||
-    (existsSync(virtual)
-      ? virtual
-      : process.platform === "win32"
-        ? "python"
-        : "python3");
-  if (!/^python(?:\d+(?:\.\d+)*)?(?:\.exe)?$/i.test(path.basename(executable)))
-    throw new Error("Choose a Python executable.");
-  return executable;
-}
-
-export function litellmBridge(): Plugin {
+export function llmBridge(): Plugin {
   return {
-    name: "local-litellm-review",
+    name: "local-llm-review",
     configureServer(server) {
       let active = 0;
       server.middlewares.use("/api/llm/review", (request, response) => {
@@ -44,9 +21,7 @@ export function litellmBridge(): Plugin {
         }
         if (
           request.headers.origin !== `http://${request.headers.host}` ||
-          !/^application\/json(?:;|$)/i.test(
-            request.headers["content-type"] ?? "",
-          )
+          !/^application\/json(?:;|$)/i.test(request.headers["content-type"] ?? "")
         ) {
           reply(403, { error: "Only same-origin JSON requests are accepted." });
           return;
@@ -65,92 +40,39 @@ export function litellmBridge(): Plugin {
         request.on("error", () =>
           reply(400, { error: "Could not read the LLM request." }),
         );
-        request.on("end", () => {
-          if (response.writableEnded) return;
+        request.on("end", async () => {
+          if (response.writableEnded || response.destroyed) return;
           if (active >= 4) {
             reply(429, { error: "The four-request LLM limit was reached." });
             return;
           }
-          let payload: { settings?: { pythonExecutable?: unknown } };
-          let python: string;
+          let payload: LLMRequest;
           try {
             payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-            python = pythonExecutable(
-              payload.settings?.pythonExecutable,
-              server.config.root,
-            );
+            validateReviewRequest(payload);
           } catch {
-            reply(400, { error: "Invalid request or Python executable." });
+            reply(400, { error: "Invalid LLM review request or settings." });
             return;
           }
           active++;
-          let released = false;
-          const release = () => {
-            if (!released) {
-              released = true;
-              active--;
-            }
-          };
-          const child = spawn(
-            python,
-            [path.join(server.config.root, "llm/review.py")],
-            {
-              shell: false,
-              windowsHide: true,
-              env: {
-                ...process.env,
-                PYTHONIOENCODING: "utf-8",
-                PYTHONUTF8: "1",
-              },
-            },
-          );
-          let output = "";
-          const timeout = setTimeout(() => {
-            child.kill();
-            reply(504, {
-              error: "The LLM request timed out after three minutes.",
-            });
-          }, 180_000);
-          child.stderr.resume();
-          child.stdout.setEncoding("utf8");
-          child.stdout.on("data", (chunk: string) => {
-            output += chunk;
-            if (Buffer.byteLength(output) > 1024 * 1024) {
-              child.kill();
-              reply(502, { error: "The LLM response is too large." });
-            }
-          });
-          child.stdin.on("error", () => {});
-          child.on("error", () => {
-            clearTimeout(timeout);
-            release();
-            reply(503, {
-              error:
-                "Could not start Python. Configure the Python executable in Settings and install requirements.txt.",
-            });
-          });
-          child.on("close", (code) => {
-            clearTimeout(timeout);
-            release();
-            if (code !== 0) {
-              reply(502, {
-                error:
-                  "The LiteLLM helper failed. Check the Python environment and requirements.txt.",
-              });
-              return;
-            }
-            try {
-              reply(200, JSON.parse(output));
-            } catch {
-              reply(502, {
-                error: "The LiteLLM helper returned invalid JSON.",
-              });
-            }
-          });
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 180_000);
           response.on("close", () => {
-            if (!response.writableEnded) child.kill();
+            if (!response.writableEnded) controller.abort();
           });
-          child.stdin.end(JSON.stringify(payload));
+          try {
+            reply(200, await reviewLLM(payload, {
+              environment: process.env,
+              signal: controller.signal,
+            }));
+          } catch (error) {
+            reply(controller.signal.aborted ? 504 : 502, {
+              error: error instanceof Error ? error.message : "The LLM review failed.",
+            });
+          } finally {
+            clearTimeout(timeout);
+            active--;
+          }
         });
       });
     },

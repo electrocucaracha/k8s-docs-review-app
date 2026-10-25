@@ -101,6 +101,150 @@
   font-weight: 500;
   line-height: 1.5;
 }
+.pr-context small a,
+.pr-head-changes {
+  color: #306451;
+  font-size: 9px;
+}
+.pr-commit-comparison {
+  display: grid;
+  gap: 8px;
+  font-size: 10px;
+}
+.pr-commit-comparison summary {
+  cursor: pointer;
+  color: #52635a;
+}
+.pr-commit-comparison label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.pr-commit-comparison select {
+  width: 100%;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  font-size: 10px;
+}
+.compare-commits-button,
+.compare-back-button {
+  width: 100%;
+  padding: 7px;
+  font-size: 10px;
+}
+.compare-back-button {
+  background: #fff;
+}
+.pr-review-comments {
+  font-size: 10px;
+}
+.pr-review-comments summary {
+  cursor: pointer;
+  color: #52635a;
+}
+.pr-review-comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-height: 240px;
+  overflow: auto;
+  padding-top: 9px;
+}
+.pr-review-comment-list article {
+  border-left: 2px solid #cdd8ce;
+  padding-left: 8px;
+}
+.pr-comment {
+  border-left: 2px solid #cdd8ce;
+  padding-left: 8px;
+}
+.pr-comment summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  cursor: pointer;
+}
+.pr-comment summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-comment summary a {
+  color: #306451;
+  font-size: 9px;
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
+}
+.pr-comment-markdown {
+  margin: 4px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.pr-comment-markdown > :first-child {
+  margin-top: 0;
+}
+.pr-comment-markdown > :last-child {
+  margin-bottom: 0;
+}
+.pr-comment-markdown pre {
+  overflow: auto;
+  padding: 6px;
+  background: #eef2ed;
+  border-radius: 3px;
+}
+.pr-comment-markdown code {
+  font-family: "JetBrains Mono Variable", monospace;
+}
+.pr-comment-markdown blockquote {
+  margin: 6px 0;
+  padding-left: 8px;
+  border-left: 2px solid #cdd8ce;
+}
+.pr-comment-markdown ul,
+.pr-comment-markdown ol {
+  padding-left: 18px;
+}
+.pr-comment-markdown table {
+  border-collapse: collapse;
+}
+.pr-comment-markdown td {
+  border: 1px solid #dfe5dc;
+  padding: 3px 5px;
+}
+.review-comment-thread {
+  margin: 4px 18px 10px 42px;
+  border-left: 2px solid #9bbbab;
+  border-radius: 3px;
+  background: #f3f8f4;
+  padding: 8px 10px;
+  color: #394a40;
+  font-family: "Public Sans Variable", sans-serif;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: normal;
+}
+.review-comment-thread article + article {
+  border-top: 1px solid #dfe9e0;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+.review-comment-thread a {
+  color: #306451;
+  font-size: 10px;
+  font-weight: 600;
+}
+.review-comment-thread p {
+  margin: 3px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .mobile-file-select {
   display: none;
 }
@@ -283,6 +427,38 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   min-height: 180px;
   flex: 1;
+}
+.diff-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 18px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.diff-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.diff-color {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.diff-color.removed,
+.cm-line.diff-removed {
+  background: #ffe5e2;
+}
+.diff-color.added,
+.cm-line.diff-added {
+  background: #e0f4e6;
+}
+.diff-color.replaced,
+.cm-line.diff-replaced {
+  background: #fff2c7;
 }
 .editor-pane {
   display: flex;
@@ -591,6 +767,25 @@
 .message-bar.is-error {
   background: #fff1ee;
   color: #a34742;
+}
+.failures {
+  background: #fff1ee;
+  color: #a34742;
+  font-size: 11px;
+  padding: 3px 16px;
+  flex-shrink: 0;
+}
+.failures summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.failures ul {
+  margin: 4px 0;
+  padding-left: 18px;
+  max-height: 120px;
+  overflow-y: auto;
 }
 .sidebar-hidden {
   grid-template-columns: minmax(0, 1fr);

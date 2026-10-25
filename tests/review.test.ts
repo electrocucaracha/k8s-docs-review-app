@@ -16,6 +16,7 @@ import {
   validateTasks,
 } from "../src/reviewTasks";
 import type { TaskRun } from "../src/reviewTasks";
+import { diffLines } from "../src/lineDiff";
 
 test("historical review cases preserve Hugo anchors and heading helpers", () => {
   const result = review(
@@ -402,20 +403,28 @@ test("disabled tasks do not send model requests", async () => {
   assert.equal(calls, 0);
 });
 
-test("LLM defaults use Ollama and prevent credentials in endpoint URLs", () => {
+test("LLM defaults allow remote HTTP Ollama endpoints and reject unsafe endpoint URLs", () => {
   assert.equal(defaultSettings.provider, "ollama");
-  assert.equal(defaultSettings.model, "llama3.2");
+  assert.equal(defaultSettings.model, "qwen3.8:27b-q4_K_M");
   validateSettings(defaultSettings);
+  validateSettings({
+    ...defaultSettings,
+    apiBase: "http://ollama.example.invalid:11434",
+  });
   for (const apiBase of [
-    "http://remote.example.invalid",
     "https://secret@example.invalid",
     "https://example.invalid?api_key=secret",
     "file:///tmp/model",
   ])
     assert.throws(() => validateSettings({ ...defaultSettings, apiBase }));
   assert.throws(() =>
-    validateSettings({ ...defaultSettings, pythonExecutable: "sh" }),
+    validateSettings({
+      ...defaultSettings,
+      provider: "openai-compatible",
+      apiBase: "http://proxy.example.invalid",
+    }),
   );
+  assert.throws(() => validateSettings({ ...defaultSettings, apiKey: "a".repeat(4097) }));
 });
 
 test("LLM findings are bounded and cannot claim verified errors or invalid lines", () => {
@@ -605,6 +614,28 @@ test("scroll mapping follows heading anchors and stays within document bounds", 
   );
   assert.equal(mapLine(5, result.alignment, "en", 5, 7), 7);
   assert.equal(mapLine(1, [], "en", 1, 1), 1);
+});
+
+test("commit diff marks replacements, additions, and removals by line", () => {
+  assert.deepEqual(
+    diffLines("A\nold\nsame\nremove", "A\nnew\nsame\nadd\nextra"),
+    { added: [5], removed: [], replaced: [2, 2, 4, 4] },
+  );
+  assert.deepEqual(diffLines("old", "new"), {
+    added: [],
+    removed: [],
+    replaced: [1, 1],
+  });
+  assert.deepEqual(diffLines("keep\nremove", "keep"), {
+    added: [],
+    removed: [2],
+    replaced: [],
+  });
+  assert.deepEqual(diffLines("keep", "keep\nadd"), {
+    added: [2],
+    removed: [],
+    replaced: [],
+  });
 });
 
 test("example review detects intended issues with source locations", () => {

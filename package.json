@@ -10,10 +10,14 @@
     "preview": "vite preview",
     "desktop": "tauri dev",
     "desktop:build": "tauri build",
-    "test": "tsx --test tests/review.test.ts",
+    "test": "tsx --test tests/review.test.ts tests/llm.test.ts",
     "test:ui": "playwright test"
   },
   "dependencies": {
+    "ai": "^7.0.153",
+    "@ai-sdk/openai": "^4.0.102",
+    "@ai-sdk/anthropic": "^4.0.88",
+    "@ai-sdk/google": "^4.0.105",
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.13.1",

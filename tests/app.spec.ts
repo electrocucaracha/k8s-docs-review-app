@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
+import { createServer } from "node:http";
+import { once } from "node:events";
 import { defaultTasks } from "../src/reviewTasks";
+import { defaultSettings } from "../src/llm";
 
 test.beforeEach(async ({ page }) => {
   await page.route(/https:\/\/api\.github\.com\/repos\/kubernetes\/website\/(?:labels\?|issues\?|contents\/content$)/, async (route) => {
@@ -130,7 +133,6 @@ test("task settings migrate existing preferences and persist custom tasks", asyn
         provider: "ollama",
         model: "llama3.2",
         apiBase: "http://127.0.0.1:11434",
-        pythonExecutable: "",
       }),
     ),
   );
@@ -254,10 +256,16 @@ test("settings default to Ollama and persist configuration without API keys", as
     "ollama",
   );
   await expect(page.getByLabel("LLM model", { exact: true })).toHaveValue(
-    "llama3.2",
+    "qwen3.8:27b-q4_K_M",
   );
   await expect(page.getByLabel("LLM API endpoint")).toHaveValue(
     "http://127.0.0.1:11434",
+  );
+  await expect(page.getByLabel("Python executable")).toHaveCount(0);
+  await page.getByLabel("LLM provider", { exact: true }).selectOption("openai");
+  await page.getByLabel("LLM provider", { exact: true }).selectOption("ollama");
+  await expect(page.getByLabel("LLM model", { exact: true })).toHaveValue(
+    "qwen3.8:27b-q4_K_M",
   );
   await page.getByLabel("LLM provider", { exact: true }).selectOption("openai");
   await page.getByLabel("LLM API key").fill("test-session-key-not-real");
@@ -341,7 +349,40 @@ test("adds labelled LLM findings and removes them after document edits", async (
   await expect(page.locator(".llm-badge")).toHaveCount(0);
 });
 
-test("local LLM bridge rejects cross-origin requests and non-Python commands", async ({
+test("restores stored LLM reviews after reload until the user reviews again", async ({ page }) => {
+  let calls = 0;
+  await page.route("**/api/llm/review", async (route) => {
+    calls++;
+    const { task } = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        model: "ollama/llama3.2",
+        findings: task.id === "accuracy"
+          ? [{ kind: "content", severity: "warning", side: "es", line: 8, title: "Translate the introduction", detail: "Still in English." }]
+          : [],
+      },
+    });
+  });
+  await page.getByRole("button", { name: "Review with LLM", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("LLM tasks complete");
+  await expect(page.locator(".llm-badge")).toHaveCount(1);
+  const reviewed = calls;
+  await expect.poll(() => page.evaluate(() => new Promise<number>((resolve) => {
+    const request = indexedDB.open("k8s-docs-review-cache");
+    request.onsuccess = () => {
+      const count = request.result.transaction("llm-reviews").objectStore("llm-reviews").count();
+      count.onsuccess = () => resolve(count.result);
+    };
+  }))).toBe(1);
+  await page.reload();
+  await expect(page.locator(".llm-badge")).toHaveCount(1);
+  expect(calls).toBe(reviewed);
+  await page.getByRole("button", { name: "Review with LLM", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("LLM tasks complete");
+  expect(calls).toBe(reviewed * 2);
+});
+
+test("local LLM bridge rejects cross-origin requests and invalid settings", async ({
   request,
 }) => {
   const crossOrigin = await request.post("/api/llm/review", {
@@ -349,11 +390,70 @@ test("local LLM bridge rejects cross-origin requests and non-Python commands", a
     data: { action: "test" },
   });
   expect(crossOrigin.status()).toBe(403);
-  const invalidExecutable = await request.post("/api/llm/review", {
+  const invalidSettings = await request.post("/api/llm/review", {
     headers: { Origin: "http://127.0.0.1:5173" },
-    data: { settings: { pythonExecutable: "sh" } },
+    data: { action: "test", settings: { provider: "unsupported" } },
   });
-  expect(invalidExecutable.status()).toBe(400);
+  expect(invalidSettings.status()).toBe(400);
+});
+
+test("desktop SDK runs in the browser webview using native HTTP instead of Node", async ({ page }) => {
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.evaluate(() => {
+      Object.defineProperty(globalThis, "isTauri", { configurable: true, value: true });
+      Object.defineProperty(globalThis, "__TAURI_INTERNALS__", { configurable: true, value: {
+        invoke: async (command: string, args: { url: string; provider: string; body: string }) => {
+          if (command === "llm_environment") return {};
+          if (command !== "llm_fetch" || args.provider !== "ollama"
+            || args.url !== "http://127.0.0.1:11434/v1/chat/completions")
+            throw new Error("Unexpected native SDK request");
+          if (!args.body.includes("Reply with OK."))
+            throw new Error("Connection test sent unexpected content");
+          return { status: 200, headers: { "content-type": "application/json" }, body: JSON.stringify({
+            id: "chat_test", object: "chat.completion", created: 1, model: "llama3.2",
+            choices: [{ index: 0, message: { role: "assistant", content: "OK" }, finish_reason: "stop" }],
+          }) };
+        },
+      } });
+    });
+    await page.getByRole("button", { name: "Test connection" }).click();
+    await expect(page.getByRole("dialog")).toContainText("ollama/qwen3.8:27b-q4_K_M");
+});
+
+test("local LLM bridge reviews through the real SDK without Python", async ({ request }) => {
+  const fixture = createServer(async (incoming, response) => {
+    expect(incoming.url).toBe("/v1/chat/completions");
+    let body = "";
+    for await (const chunk of incoming) body += chunk;
+    expect(JSON.parse(body).messages[1].content).toContain("1: Traducción");
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({
+      id: "chat_test", object: "chat.completion", created: 1, model: "llama3.2",
+      choices: [{ index: 0, message: { role: "assistant", content: '{"findings":[]}' }, finish_reason: "stop" }],
+    }));
+  });
+  fixture.listen(0, "127.0.0.1");
+  await once(fixture, "listening");
+  const address = fixture.address();
+  if (!address || typeof address === "string") throw new Error("Missing HTTP fixture port");
+  try {
+    const result = await request.post("/api/llm/review", {
+      headers: { Origin: "http://127.0.0.1:5173" },
+      data: { action: "review", english: "Source", spanish: "Traducción", settings: {
+        ...defaultSettings, apiBase: `http://127.0.0.1:${address.port}`,
+      } },
+    });
+    expect(result.status()).toBe(200);
+    expect(await result.json()).toEqual({ model: "ollama/qwen3.8:27b-q4_K_M", findings: [] });
+    const oversized = await request.post("/api/llm/review", {
+      headers: { Origin: "http://127.0.0.1:5173" },
+      data: { padding: "a".repeat(1024 * 1024) },
+    });
+    expect(oversized.status()).toBe(413);
+  } finally {
+    fixture.closeAllConnections();
+    await new Promise<void>((resolve, reject) => fixture.close((error) => error ? reject(error) : resolve()));
+  }
 });
 
 test("renders the comparison and filters findings", async ({ page }) => {
@@ -415,7 +515,8 @@ test("review export is removed while Spanish translation download remains availa
 });
 
 test("loads a PR and lists only changed Spanish files", async ({ page, context }) => {
-  const sha = "a".repeat(40);
+  let sha = "a".repeat(40);
+  const initialSha = sha;
   const requests: string[] = [];
   await expect(page.locator(".brand span")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open PR on GitHub" })).toBeDisabled();
@@ -436,6 +537,35 @@ test("loads a PR and lists only changed Spanish files", async ({ page, context }
             { filename: "content/es/docs/deleted.md", status: "removed" },
             { filename: "content/fr/docs/page.md", status: "modified" },
           ],
+        });
+      if (url.pathname.endsWith("/pulls/42/commits"))
+        return route.fulfill({
+          json: [{
+            sha,
+            commit: { message: "Latest update", author: { name: "Contributor", date: "2026-01-01T00:00:00Z" } },
+            author: { login: "contributor" },
+          }],
+        });
+      if (url.pathname.endsWith("/pulls/42/comments"))
+        return route.fulfill({
+          json: [{
+            id: 7,
+            path: "content/es/docs/page.md",
+            line: 3,
+            original_line: 3,
+            body: "Please preserve the reviewer-approved heading.",
+            user: { login: "reviewer" },
+          }],
+        });
+      if (url.pathname.endsWith("/issues/42/comments"))
+        return route.fulfill({
+          json: [{
+            id: 18,
+            body: "Thanks **for** updating the `wording`.\n\n- First item\n- Second item",
+            user: { login: "maintainer" },
+            created_at: "2026-01-02T00:00:00Z",
+            html_url: "https://github.com/kubernetes/website/pull/42#issuecomment-18",
+          }],
         });
       if (url.pathname.includes("/git/trees/"))
         return route.fulfill({
@@ -464,6 +594,39 @@ test("loads a PR and lists only changed Spanish files", async ({ page, context }
   await expect(page.locator(".pr-context")).toContainText(
     "Update Spanish docs",
   );
+  await expect(page.locator(".pr-context")).toContainText(`Head commit: ${sha}`);
+  await expect(page.getByRole("link", { name: sha, exact: true })).toHaveAttribute(
+    "href", `https://github.com/kubernetes/website/commit/${sha}`,
+  );
+  await expect(page.getByRole("link", { name: "Changes since" })).toHaveCount(0);
+  await page.locator(".pr-review-comments > summary").click();
+  await expect(page.locator(".pr-review-comment-list")).toContainText(
+    "Thanks for updating the wording.",
+  );
+  await expect(page.locator(".pr-review-comment-list")).not.toContainText(
+    "Please preserve the reviewer-approved heading.",
+  );
+  const prComment = page.locator(".pr-comment");
+  await expect(prComment).not.toHaveAttribute("open", "");
+  await prComment.locator("summary").click();
+  await expect(prComment.locator("strong")).toHaveText("for");
+  await expect(prComment.locator("code")).toHaveText("wording");
+  await expect(prComment.locator("li")).toHaveCount(2);
+  await expect(page.locator(".spanish-pane .review-comment-thread")).toContainText(
+    "Please preserve the reviewer-approved heading.",
+  );
+  let llmComments: unknown;
+  await page.route("/api/llm/review", async (route) => {
+    llmComments = route.request().postDataJSON().reviewComments;
+    await route.fulfill({ json: { model: "ollama/test", findings: [] } });
+  });
+  await page.getByRole("button", { name: "Review with LLM", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("LLM tasks complete");
+  expect(llmComments).toEqual([{
+    path: "content/es/docs/page.md",
+    line: 3,
+    body: "Please preserve the reviewer-approved heading.",
+  }]);
   await context.route("https://github.com/kubernetes/website/pull/42", (route) =>
     route.fulfill({ contentType: "text/html", body: "<h1>Pull request 42</h1>" }),
   );
@@ -483,6 +646,78 @@ test("loads a PR and lists only changed Spanish files", async ({ page, context }
   expect(requests.filter((path) => path.includes("/git/trees/")).length).toBe(
     1,
   );
+  await expect(page.getByRole("link", { name: "Changes since" })).toHaveCount(0);
+
+  sha = "b".repeat(40);
+  await page.getByRole("button", { name: "Refresh pull requests" }).click();
+  await page.getByRole("combobox", { name: "Pull request", exact: true }).selectOption("42");
+  await expect(page.getByRole("link", { name: sha, exact: true })).toHaveAttribute(
+    "href", `https://github.com/kubernetes/website/commit/${sha}`,
+  );
+  await expect(page.getByRole("link", { name: "Changes since aaaaaaaa" })).toHaveAttribute(
+    "href", `https://github.com/kubernetes/website/compare/${initialSha}..${sha}`,
+  );
+  expect(requests.filter((path) => path.includes("/contents/content/")).length).toBe(4);
+  expect(requests.filter((path) => path.includes("/git/trees/")).length).toBe(2);
+});
+
+test("compares Markdown files between selected PR commits", async ({ page }) => {
+  const from = "1".repeat(40);
+  const middle = "3".repeat(40);
+  const to = "2".repeat(40);
+  await page.route("https://api.github.com/repos/kubernetes/website/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/labels") || url.pathname.endsWith("/issues") || url.pathname.endsWith("/contents/content"))
+      return route.fallback();
+    if (url.pathname.endsWith("/pulls/42"))
+      return route.fulfill({ json: { title: "Multiple commit update", head: { sha: to } } });
+    if (url.pathname.endsWith("/pulls/42/files"))
+      return route.fulfill({ json: [{ filename: "content/es/docs/page.md", status: "modified" }] });
+    if (url.pathname.endsWith("/pulls/42/comments"))
+      return route.fulfill({ json: [] });
+    if (url.pathname.endsWith("/issues/42/comments"))
+      return route.fulfill({ json: [] });
+    if (url.pathname.endsWith("/pulls/42/commits"))
+      return route.fulfill({ json: [
+        { sha: from, commit: { message: "First revision", author: { name: "Contributor", date: "2026-01-01T00:00:00Z" } }, author: { login: "contributor" } },
+        { sha: middle, commit: { message: "Suggestion applied", author: { name: "Contributor", date: "2026-01-02T00:00:00Z" } }, author: { login: "contributor" } },
+        { sha: to, commit: { message: "Second revision", author: { name: "Contributor", date: "2026-01-03T00:00:00Z" } }, author: { login: "contributor" } },
+      ] });
+    if (url.pathname.includes("/git/trees/"))
+      return route.fulfill({ json: { truncated: false, tree: [
+        "content/en/docs/page.md", "content/es/docs/page.md",
+      ].map((path) => ({ path, type: "blob" })) } });
+    if (url.pathname.includes("/compare/")) {
+      expect(url.pathname).toContain(`/compare/${middle}...${to}`);
+      return route.fulfill({ json: { files: [
+        { filename: "content/es/docs/page.md", status: "modified", additions: 2, deletions: 1 },
+      ] } });
+    }
+    if (url.pathname.includes("/contents/")) {
+      const ref = url.searchParams.get("ref");
+      return route.fulfill({
+        body: url.pathname.includes("/content/es/")
+          ? ref === middle ? "# Suggestion applied\n" : "# Newer translation\n"
+          : "# English source\n",
+      });
+    }
+    return route.fallback();
+  });
+  await page.getByRole("combobox", { name: "Pull request", exact: true }).selectOption("42");
+  await expect(page.getByRole("combobox", { name: "Pull request", exact: true })).toBeEnabled();
+  await page.locator(".pr-commit-comparison summary").click();
+  await expect(page.getByLabel("Compare from commit")).toHaveValue(from);
+  await expect(page.getByLabel("Compare to commit")).toHaveValue(to);
+  await page.getByLabel("Compare from commit").selectOption(middle);
+  await page.getByRole("button", { name: "Compare commits", exact: true }).click();
+  await expect(page.getByLabel("Files changed between commits")).toContainText("page.md");
+  await expect(page.locator(".comparison")).toContainText("Suggestion applied");
+  await expect(page.locator(".comparison")).toContainText("Newer translation");
+  await expect(page.locator(".commit-comparison .spanish-pane .cm-line.diff-replaced")).toHaveCount(1);
+  await expect(page.locator(".commit-comparison .editor-pane:first-child .cm-line.diff-replaced")).toHaveCount(1);
+  await expect(page.locator(".findings")).toHaveCount(0);
+  await page.getByRole("button", { name: "Back to PR review", exact: true }).click();
+  await expect(page.locator(".findings")).toBeVisible();
 });
 
 test("preserves the current workspace on GitHub errors and can refresh the PR list", async ({
@@ -504,6 +739,17 @@ test("preserves the current workspace on GitHub errors and can refresh the PR li
     "Example workspace",
   );
   await page.getByRole("button", { name: "Refresh pull requests" }).click();
+  await expect(page.getByRole("combobox", { name: "Pull request", exact: true })).toBeEnabled();
+  await expect(page.getByRole("combobox", { name: "Pull request", exact: true })).toContainText("Update translation");
+});
+
+test("reports GitHub rate limits when no cached copy exists", async ({ page }) => {
+  await page.route("https://api.github.com/repos/kubernetes/website/issues?**", (route) =>
+    new URL(route.request().url()).searchParams.get("labels") === "language/fr"
+      ? route.fulfill({ status: 429, json: { message: "API rate limit" } })
+      : route.fallback(),
+  );
+  await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("fr");
   await expect(page.getByRole("combobox", { name: "Pull request", exact: true })).toBeDisabled();
   await expect(page.getByRole("combobox", { name: "Pull request", exact: true })).toContainText("Could not load pull requests");
 });
@@ -524,6 +770,11 @@ test("language selection paginates labelled PRs and loads their translated files
         : [{ number: 43, title: "French documentation", pull_request: {} }, { number: 999, title: "Not a pull request" }] });
     }
     if (url.pathname.endsWith("/pulls/43")) return route.fulfill({ json: { title: "French documentation", head: { sha } } });
+    if (url.pathname.endsWith("/pulls/43/comments")) return route.fulfill({ json: [] });
+    if (url.pathname.endsWith("/issues/43/comments")) return route.fulfill({ json: [] });
+    if (url.pathname.endsWith("/pulls/43/commits")) return route.fulfill({ json: [
+      { sha, commit: { message: "French update", author: { name: "Contributor", date: "2026-01-01T00:00:00Z" } }, author: { login: "contributor" } },
+    ] });
     if (url.pathname.endsWith("/pulls/43/files")) return route.fulfill({ json: [
       { filename: "content/fr/docs/page.md", status: "modified" },
       { filename: "content/fr/docs/second.md", status: "added" },

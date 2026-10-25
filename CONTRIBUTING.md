@@ -32,28 +32,29 @@ Installers are written under `src-tauri/target/release/bundle/`. Build Windows
 installers on Windows, macOS apps on macOS, and Linux packages on Linux.
 Signing and notarization are not configured.
 
-## Python Environment
+## LLM Providers
 
-Python 3.10 or newer is needed for LLM review. Create a local environment and
-install its dependencies on macOS or Linux:
+LLM review uses the TypeScript [AI SDK](https://ai-sdk.dev/) with OpenAI,
+Anthropic, and Google provider adapters. Ollama uses its OpenAI-compatible
+`/v1/chat/completions` API. The SDK runs in the Vite server during browser
+development and in the desktop webview with a restricted Rust HTTP transport.
+The packaged app requires neither Python nor an installed Node.js runtime.
 
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-```
-
-On Windows:
-
-```powershell
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-Development mode discovers this environment automatically. The packaged
-desktop app includes the review helper, but not a Python interpreter or
-LiteLLM dependencies.
+Configure the provider, endpoint, model, and session-only API key in Settings.
+Alternatively, launch the Vite server or desktop app with `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, or `GEMINI_API_KEY` set. Gemini also accepts
+`GOOGLE_API_KEY` and `GOOGLE_GENERATIVE_AI_API_KEY`.
 
 ## Validation
+
+Install [pre-commit](https://pre-commit.com/) and enable the hooks:
+
+```sh
+python -m pip install pre-commit
+pre-commit install
+```
+
+Run them manually across all files with `pre-commit run --all-files`.
 
 Run the focused checks and test suites with:
 
@@ -64,11 +65,12 @@ npm run build
 npx playwright install chromium
 npm run test:ui
 cargo test --manifest-path src-tauri/Cargo.toml
-.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
+python3 -m unittest discover -s tests -p 'test_review_history.py' -v
 ```
 
-The Python command assumes the virtual environment above; on Windows, replace
-`.venv/bin/python` with `.\.venv\Scripts\python.exe`.
+Python is only needed for the optional history-audit tooling and pre-commit
+hooks, not to run the app or LLM reviews. On Windows, use `py` instead of
+`python3` for the history tests.
 
 Browser tests cover PR loading, provider settings and session-only credentials,
 task settings migration and custom-task persistence, parallel execution and
@@ -79,9 +81,10 @@ classification and issue drafts, and desktop/mobile layout.
 Native tests cover repository indexing, checkout refresh and local-edit
 preservation, locale-specific translation saves, external-change conflicts, path traversal,
 symlink escapes, and documentation URL and issue-draft opener restrictions.
-Python tests validate LiteLLM request routing and response schemas, including
-task-specific prompt scoping and the real SDK against a local
-Ollama-protocol fixture.
+TypeScript tests validate all five provider routes and response schemas,
+task-specific prompt scoping, credential handling, and the real SDK against a
+local Ollama-compatible HTTP fixture. Native tests also validate LLM endpoint
+restrictions. Python tests cover only the optional history-audit tooling.
 
 An optional live published-page check can be run explicitly:
 

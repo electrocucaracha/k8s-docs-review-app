@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri, invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import {
@@ -31,21 +31,27 @@ import {
 } from "lucide-react";
 import { Editor } from "./Editor";
 import type { EditorHandle } from "./Editor";
+import { MarkdownComment } from "./MarkdownComment";
 import { mapLine, pairPath, reviewDocuments } from "./review";
 import type { Document, Finding, Workspace } from "./review";
 import { sample } from "./sample";
 import {
   getLanguages,
   getOpenPullRequests,
+  NothingToReview,
   getPullRequest,
   loadRemotePullRequest,
+  refreshGitHubCache,
+  comparePullRequestCommits,
+  loadCommitDocument,
 } from "./pullRequest";
-import type { Language, OpenPullRequest, PullRequestWorkspace } from "./pullRequest";
+import type { CommitFileChange, Language, OpenPullRequest, PullRequestComment, PullRequestReviewComment, PullRequestWorkspace } from "./pullRequest";
 import { SettingsDialog } from "./SettingsDialog";
-import { loadSettings, requestLLMReview, saveSettings } from "./llm";
+import { loadLLMReview, loadSettings, requestLLMReview, saveLLMReview, saveSettings } from "./llm";
 import type { LLMSettings } from "./llm";
 import { defaultTasks, runReviewTasks } from "./reviewTasks";
 import type { TaskRun } from "./reviewTasks";
+import { diffLines } from "./lineDiff";
 import {
   checkPublishedReferences,
   collectPublishedReferences,
@@ -57,6 +63,8 @@ import "./App.css";
 
 const fileName = (path: string) => path.split("/").pop() ?? path;
 const displayPath = (path: string) => path.replace(/^content\/[^/]+\//, "");
+const noReviewComments: PullRequestReviewComment[] = [];
+const noPullRequestComments: PullRequestComment[] = [];
 const kindIcons = { links: Link2, structure: ListTree, content: Code2 };
 const severityIcons = {
   error: CircleAlert,
@@ -97,7 +105,19 @@ export default function App() {
   const [language, setLanguage] = useState("es");
   const [languages, setLanguages] = useState<Language[]>([{ code: "es", name: "Spanish" }]);
   const [openPullRequests, setOpenPullRequests] = useState<OpenPullRequest[]>([]);
+  const [unreviewable, setUnreviewable] = useState<number[]>([]);
+  const [failures, setFailures] = useState<{ source: string; message: string }[]>([]);
+  const recordFailure = (source: string, cause: unknown) => setFailures((current) => [...current, { source, message: cause instanceof Error ? cause.message : String(cause) }]);
   const [selectedPullRequest, setSelectedPullRequest] = useState("");
+  const [previousHead, setPreviousHead] = useState<string | null>(null);
+  const [compareFrom, setCompareFrom] = useState("");
+  const [compareTo, setCompareTo] = useState("");
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareFiles, setCompareFiles] = useState<CommitFileChange[]>([]);
+  const [comparePath, setComparePath] = useState("");
+  const [compareDocuments, setCompareDocuments] = useState<{ from: Document; to: Document } | null>(null);
+  const [compareBusy, setCompareBusy] = useState(false);
+  const compareRequest = useRef(0);
   const [pullRequestsBusy, setPullRequestsBusy] = useState(true);
   const [languageError, setLanguageError] = useState("");
   const [pullRequestsError, setPullRequestsError] = useState("");
@@ -131,6 +151,18 @@ export default function App() {
     "pullRequest" in workspace ? workspace.pullRequest : undefined;
   const reviewPaths =
     "reviewPaths" in workspace ? workspace.reviewPaths : undefined;
+  const reviewComments =
+    "reviewComments" in workspace ? workspace.reviewComments : noReviewComments;
+  const pullRequestComments =
+    "comments" in workspace ? workspace.comments : noPullRequestComments;
+  const commits =
+    "commits" in workspace ? workspace.commits : [];
+  const activeReviewComments = useMemo(
+    () => reviewComments
+      .filter((comment) => comment.path === activePath)
+      .map(({ path, line, body }) => ({ path, line, body })),
+    [reviewComments, activePath],
+  );
   const revision = pullRequest?.sha ?? workspace.name;
   const activeLanguage = activePath.split("/")[1];
   const languageName = languages.find((item) => item.code === activeLanguage)?.name ?? activeLanguage;
@@ -149,6 +181,29 @@ export default function App() {
     ...original,
     content: drafts[activePath] ?? original.content,
   };
+  const leftDocument = compareMode
+    ? compareDocuments?.from ?? { path: comparePath, content: "" }
+    : english;
+  const rightDocument = compareMode
+    ? compareDocuments?.to ?? { path: comparePath, content: "" }
+    : spanish;
+  const commitDiff = useMemo(
+    () => compareDocuments ? diffLines(compareDocuments.from.content, compareDocuments.to.content) : undefined,
+    [compareDocuments],
+  );
+  const compareFromCommit = commits.find((commit) => commit.sha === compareFrom);
+  const compareToCommit = commits.find((commit) => commit.sha === compareTo);
+  const compareList = compareFiles.filter((file) =>
+    file.path.toLowerCase().includes(query.toLowerCase()),
+  );
+  const englishReviewComments = useMemo(
+    () => reviewComments.filter((comment) => comment.path === english.path),
+    [reviewComments, english.path],
+  );
+  const spanishReviewComments = useMemo(
+    () => reviewComments.filter((comment) => comment.path === spanish.path),
+    [reviewComments, spanish.path],
+  );
   const deferredContent = useDeferredValue(spanish.content);
   const offlineReview = reviewDocuments(
     english,
@@ -221,7 +276,7 @@ export default function App() {
     let current = true;
     void getLanguages().then(
       (result) => { if (current) setLanguages(result); },
-      (cause) => { if (current) setLanguageError(`Could not load languages: ${String(cause)}`); },
+      (cause) => { if (current) { setLanguageError(`Could not load languages: ${String(cause)}`); recordFailure("Languages", cause); } },
     );
     return () => { current = false; };
   }, [refresh]);
@@ -230,18 +285,32 @@ export default function App() {
     let current = true;
     void getOpenPullRequests(language).then(
       (result) => { if (current) setOpenPullRequests(result); },
-      (cause) => { if (current) setPullRequestsError(String(cause)); },
+      (cause) => { if (current) { setPullRequestsError(String(cause)); recordFailure("Pull request list", cause); } },
     ).finally(() => { if (current) setPullRequestsBusy(false); });
     return () => { current = false; };
   }, [language, refresh]);
 
+  const enabledTasksKey = JSON.stringify(enabledTasks);
+  const hasLLMResult = activeLLMResult !== null;
+  useEffect(() => {
+    if (compareMode || hasLLMResult || llmBusy || !source) return;
+    let current = true;
+    const snapshot = { path: activePath, revision, english: english.content, spanish: spanish.content, configuration: JSON.stringify(settings) };
+    void loadLLMReview({ settings, tasks: JSON.parse(enabledTasksKey), language: activeLanguage, english: snapshot.english, spanish: snapshot.spanish, reviewComments: activeReviewComments }).then((runs) => {
+      if (current && runs) setLLMResult({ ...snapshot, runs });
+    });
+    return () => { current = false; };
+  }, [compareMode, hasLLMResult, llmBusy, source, activePath, revision, english.content, spanish.content, settings, enabledTasksKey, activeLanguage, activeReviewComments]);
+
   function updatePullRequestList(nextLanguage = language) {
     setOpenPullRequests([]);
+    setUnreviewable([]);
     setSelectedPullRequest("");
     setPullRequestsBusy(true);
     setPullRequestsError("");
     if (nextLanguage === language) {
       setLanguageError("");
+      refreshGitHubCache();
       setRefresh((value) => value + 1);
     } else {
       setLanguage(nextLanguage);
@@ -292,7 +361,20 @@ export default function App() {
       throw new Error(
         "No changed translation Markdown files could be loaded from this PR.",
       );
+    compareRequest.current += 1;
+    setCompareBusy(false);
+    if (pullRequest?.number !== next.pullRequest.number) {
+      setPreviousHead(null);
+    } else if (pullRequest.sha !== next.pullRequest.sha) {
+      setPreviousHead(pullRequest.sha);
+    }
     setWorkspace(next);
+    setCompareMode(false);
+    setCompareFiles([]);
+    setCompareDocuments(null);
+    setComparePath("");
+    setCompareFrom(next.commits[0]?.sha ?? "");
+    setCompareTo(next.commits.at(-1)?.sha ?? "");
     setActivePath(nextFile.path);
     setDrafts({});
     setSelected(null);
@@ -320,25 +402,27 @@ export default function App() {
         ));
 
   async function loadPullRequest(number: number) {
-    if (busy || llmBusy || !(await canReplace())) return;
+    if (busy || llmBusy || compareBusy || !(await canReplace())) return;
     setSelectedPullRequest(String(number));
     setError("");
     setBusy(true);
     try {
       setNotice(`Loading PR #${number}...`);
-      const { pullRequest, reviewPaths } = await getPullRequest(number, language);
+      const { pullRequest, reviewPaths, reviewComments, comments, commits } = await getPullRequest(number, language);
       if (isTauri()) {
         setNotice(`Preparing local checkout for PR #${number}...`);
         const next = await invoke<PullRequestWorkspace>("load_pull_request", {
           pullRequest,
           reviewPaths,
         });
-        replaceWorkspace({ ...next, native: true });
+        replaceWorkspace({ ...next, native: true, reviewComments, comments, commits });
       } else {
         setNotice(`Loading files for PR #${number}...`);
-        replaceWorkspace(await loadRemotePullRequest(pullRequest, reviewPaths));
+        replaceWorkspace(await loadRemotePullRequest(pullRequest, reviewPaths, reviewComments, comments, commits));
       }
     } catch (cause) {
+      if (cause instanceof NothingToReview) setUnreviewable((current) => [...current, number]);
+      recordFailure(`PR #${number}`, cause);
       setSelectedPullRequest("");
       setError(String(cause));
       setNotice("");
@@ -354,6 +438,59 @@ export default function App() {
       else window.open(pullRequest.url, "_blank", "noopener,noreferrer");
     } catch (cause) {
       setError(String(cause));
+    }
+  }
+
+  async function compareCommits() {
+    if (!pullRequest || compareBusy || !compareFrom || !compareTo || compareFrom === compareTo) return;
+    const requestId = ++compareRequest.current;
+    setCompareBusy(true);
+    setError("");
+    setCompareDocuments(null);
+    try {
+      const changes = await comparePullRequestCommits(compareFrom, compareTo);
+      if (requestId !== compareRequest.current) return;
+      setCompareFiles(changes);
+      setCompareMode(true);
+      if (!changes.length) {
+        setComparePath("");
+        setNotice("No Markdown files changed between these commits.");
+        return;
+      }
+      const path = changes[0].path;
+      setComparePath(path);
+      setNotice("");
+      const [from, to] = await Promise.all([
+        loadCommitDocument(changes[0].previousPath ?? path, compareFrom),
+        loadCommitDocument(path, compareTo),
+      ]);
+      if (requestId === compareRequest.current) setCompareDocuments({ from, to });
+    } catch (cause) {
+      if (requestId === compareRequest.current)
+        setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      if (requestId === compareRequest.current) setCompareBusy(false);
+    }
+  }
+
+  async function selectComparedFile(path: string) {
+    if (compareBusy || !compareFrom || !compareTo) return;
+    const requestId = ++compareRequest.current;
+    setComparePath(path);
+    setCompareDocuments(null);
+    setCompareBusy(true);
+    setError("");
+    try {
+      const [from, to] = await Promise.all([
+        loadCommitDocument(compareFiles.find((file) => file.path === path)?.previousPath ?? path, compareFrom),
+        loadCommitDocument(path, compareTo),
+      ]);
+      if (requestId === compareRequest.current) setCompareDocuments({ from, to });
+    } catch (cause) {
+      if (requestId === compareRequest.current)
+        setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      if (requestId === compareRequest.current) setCompareBusy(false);
     }
   }
 
@@ -453,7 +590,6 @@ export default function App() {
       ...next,
       model: next.model.trim(),
       apiBase: next.apiBase.trim(),
-      pythonExecutable: next.pythonExecutable.trim(),
     });
     setSettingsOpen(false);
     setNotice("LLM settings saved");
@@ -508,9 +644,14 @@ export default function App() {
             english: english.content,
             spanish: spanish.content,
             language: activeLanguage,
+            reviewComments: activeReviewComments,
           }),
         (current) =>
           setLLMResult({ ...snapshot, runs: [...preserved, ...current] }),
+      );
+      void saveLLMReview(
+        { settings, tasks: enabledTasks, language: activeLanguage, english: snapshot.english, spanish: snapshot.spanish, reviewComments: activeReviewComments },
+        [...preserved, ...runs],
       );
       const failures = runs.filter((run) => run.status === "failed").length;
       setNotice(
@@ -594,29 +735,29 @@ export default function App() {
               className="language-select"
               aria-label="Language"
               value={language}
-              disabled={busy || llmBusy}
+              disabled={busy || llmBusy || compareBusy}
               onChange={(event) => updatePullRequestList(event.target.value)}
             >
               {languages.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
             </select>
-            <label className="pr-input" aria-busy={pullRequestsBusy || busy}>
-              {pullRequestsBusy || busy ? <LoaderCircle size={16} className="spin" /> :
+            <label className="pr-input" aria-busy={pullRequestsBusy || busy || compareBusy}>
+              {pullRequestsBusy || busy || compareBusy ? <LoaderCircle size={16} className="spin" /> :
               <GitPullRequest size={16} />
               }
               <select
                 aria-label="Pull request"
                 value={selectedPullRequest}
-                disabled={busy || llmBusy || pullRequestsBusy || !openPullRequests.length}
+                disabled={busy || llmBusy || compareBusy || pullRequestsBusy || !openPullRequests.length}
                 onChange={(event) => { if (event.target.value) void loadPullRequest(Number(event.target.value)); }}
               >
                 <option value="">{pullRequestsBusy ? "Loading pull requests..." : pullRequestsError ? "Could not load pull requests" : openPullRequests.length ? "Select a pull request" : "No open pull requests"}</option>
-                {openPullRequests.map((item) => <option key={item.number} value={item.number}>#{item.number} {item.title}</option>)}
+                {openPullRequests.map((item) => <option key={item.number} value={item.number} disabled={unreviewable.includes(item.number)}>#{item.number} {item.title}</option>)}
               </select>
             </label>
             <button
               className="icon-button"
               type="button"
-              disabled={busy || llmBusy || pullRequestsBusy}
+              disabled={busy || llmBusy || compareBusy || pullRequestsBusy}
               title="Refresh pull requests"
               aria-label="Refresh pull requests"
               onClick={() => updatePullRequestList()}
@@ -626,7 +767,7 @@ export default function App() {
             <button
               className="icon-button"
               type="button"
-              disabled={!pullRequest || busy}
+              disabled={!pullRequest || busy || compareBusy}
               title="Open PR on GitHub"
               aria-label="Open PR on GitHub"
               onClick={() => void openPullRequest()}
@@ -666,7 +807,95 @@ export default function App() {
           <div className="pr-context">
             <span>kubernetes/website</span>
             <strong title={pullRequest.title}>{pullRequest.title}</strong>
-            <small>{pullRequest.sha.slice(0, 8)}</small>
+            <small>
+              Head commit:{" "}
+              <a
+                href={`https://github.com/kubernetes/website/commit/${pullRequest.sha}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {pullRequest.sha}
+              </a>
+            </small>
+            {previousHead && (
+              <a
+                className="pr-head-changes"
+                href={`https://github.com/kubernetes/website/compare/${previousHead}..${pullRequest.sha}`}
+                target="_blank"
+                rel="noreferrer"
+                title={`Compare ${previousHead} to ${pullRequest.sha}`}
+              >
+                Changes since {previousHead.slice(0, 8)}
+              </a>
+            )}
+            {commits.length > 1 && (
+              <details className="pr-commit-comparison">
+                <summary>Compare PR commits</summary>
+                <label>
+                  From
+                  <select
+                    aria-label="Compare from commit"
+                    value={compareFrom}
+                    disabled={compareBusy}
+                    onChange={(event) => setCompareFrom(event.target.value)}
+                  >
+                    {commits.map((commit) => (
+                      <option key={commit.sha} value={commit.sha}>
+                        {commit.sha.slice(0, 8)} · {commit.message}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  To
+                  <select
+                    aria-label="Compare to commit"
+                    value={compareTo}
+                    disabled={compareBusy}
+                    onChange={(event) => setCompareTo(event.target.value)}
+                  >
+                    {commits.map((commit) => (
+                      <option key={commit.sha} value={commit.sha}>
+                        {commit.sha.slice(0, 8)} · {commit.message}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="compare-commits-button"
+                  disabled={compareBusy || !compareFrom || !compareTo || compareFrom === compareTo}
+                  onClick={() => void compareCommits()}
+                >
+                  {compareBusy ? "Comparing..." : "Compare commits"}
+                </button>
+              </details>
+            )}
+            {compareMode && (
+              <button
+                className="compare-back-button"
+                type="button"
+                onClick={() => setCompareMode(false)}
+              >
+                Back to PR review
+              </button>
+            )}
+            <details className="pr-review-comments">
+              <summary>PR comments ({pullRequestComments.length})</summary>
+              <div className="pr-review-comment-list">
+                {pullRequestComments.length ? pullRequestComments.map((comment) => (
+                  <details className="pr-comment" key={comment.id}>
+                    <summary>
+                      <span>{comment.author} · {new Date(comment.date).toLocaleDateString()}</span>
+                      <a href={comment.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                        Open on GitHub
+                      </a>
+                    </summary>
+                    <MarkdownComment markdown={comment.body} />
+                  </details>
+                )) : <p>No PR comments yet.</p>}
+              </div>
+            </details>
           </div>
         )}
         <label className="search">
@@ -678,8 +907,23 @@ export default function App() {
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        <div className="file-list" aria-label={`${languageName} files`}>
-          {files.map((document) => (
+        <div className="file-list" aria-label={compareMode ? "Files changed between commits" : `${languageName} files`}>
+          {compareMode ? compareList.map((file) => (
+            <button
+              key={file.path}
+              className={`file-item ${file.path === comparePath ? "active" : ""}`}
+              disabled={compareBusy}
+              onClick={() => void selectComparedFile(file.path)}
+              title={file.path}
+            >
+              <FileText size={16} />
+              <span>
+                <strong>{fileName(file.path)}</strong>
+                <small>{file.status} · +{file.additions} −{file.deletions}</small>
+              </span>
+              <ChevronRight size={13} />
+            </button>
+          )) : files.map((document) => (
             <button
               key={document.path}
               className={`file-item ${document.path === activePath ? "active" : ""}`}
@@ -708,19 +952,22 @@ export default function App() {
               )}
             </button>
           ))}
-          {!files.length && <p className="empty-message">No matching files</p>}
+          {compareMode && !compareList.length && <p className="empty-message">No changed Markdown files</p>}
+          {!compareMode && !files.length && <p className="empty-message">No matching files</p>}
         </div>
         <div className="sidebar-footer">
           <span className="locale-badge">{activeLanguage.toUpperCase()}</span>
           <span>
             {
-              workspace.documents.filter(
+              (compareMode ? compareFiles : workspace.documents).filter(
                 (document) =>
-                  document.path.startsWith(`content/${activeLanguage}/`) &&
-                  (!reviewPaths || reviewPaths.includes(document.path)),
+                  compareMode || (
+                    document.path.startsWith(`content/${activeLanguage}/`) &&
+                    (!reviewPaths || reviewPaths.includes(document.path))
+                  ),
               ).length
             }{" "}
-            {pullRequest ? `changed ${languageName} files` : `${languageName} files`}
+            {compareMode ? "files changed" : pullRequest ? `changed ${languageName} files` : `${languageName} files`}
           </span>
           <span className="offline-dot" />
         </div>
@@ -761,14 +1008,14 @@ export default function App() {
                   </option>
                 ))}
             </select>
-            <span title={displayPath(activePath)}>
-              {displayPath(activePath)}
+            <span title={displayPath(compareMode ? comparePath : activePath)}>
+              {displayPath(compareMode ? comparePath : activePath)}
             </span>
-            {dirty && (
+            {!compareMode && dirty && (
               <span className="dirty-dot" title="Unsaved translation" />
             )}
           </div>
-          <div className="document-actions">
+          {!compareMode && <div className="document-actions">
             <button
               title="Check page availability on kubernetes.io/docs"
               aria-label="Check references"
@@ -817,7 +1064,7 @@ export default function App() {
             >
               <FileText size={16} />
             </button>
-          </div>
+          </div>}
         </div>
 
         {(error || languageError || pullRequestsError || notice || !source) && (
@@ -844,59 +1091,85 @@ export default function App() {
           </div>
         )}
 
-        <section className="comparison" aria-label="Translation comparison">
+        {failures.length > 0 && (
+          <details className="failures" aria-label="Failures">
+            <summary>
+              Failures ({failures.length})
+              <button className="icon-button" type="button" aria-label="Clear failures" onClick={(event) => { event.preventDefault(); setFailures([]); }}><X size={14} /></button>
+            </summary>
+            <ul>
+              {failures.map((item, index) => <li key={index}><strong>{item.source}</strong>: {item.message}</li>)}
+            </ul>
+          </details>
+        )}
+
+        {compareMode && (
+          <div className="diff-legend" aria-label="Difference colors">
+            <span><i className="diff-color removed" /> Removed</span>
+            <span><i className="diff-color added" /> Added</span>
+            <span><i className="diff-color replaced" /> Replaced</span>
+          </div>
+        )}
+        <section className={`comparison ${compareMode ? "commit-comparison" : ""}`} aria-label="Translation comparison">
           <div className="editor-pane">
             <div className="pane-header">
               <div>
-                <span className="locale-badge">EN</span>
-                <strong>English</strong>
-                <span className="pane-tag">SOURCE</span>
+                <span className="locale-badge">{compareMode ? "FROM" : "EN"}</span>
+                <strong>{compareMode ? "From commit" : "English"}</strong>
+                <span className="pane-tag">{compareMode ? compareFromCommit?.sha.slice(0, 8) : "SOURCE"}</span>
               </div>
-              <span>{english.content.split("\n").length} lines</span>
+              <span>{leftDocument.content.split("\n").length} lines</span>
             </div>
             <Editor
-              key={`en-${revision}-${activePath}`}
+              key={`${compareMode ? "from" : "en"}-${compareMode ? compareFrom : revision}-${compareMode ? comparePath : activePath}`}
               ref={englishEditor}
-              label="English source"
-              content={english.content}
+              label={compareMode ? "From commit file" : "English source"}
+              content={leftDocument.content}
               readOnly
-              findings={review.findings.filter(
+              findings={compareMode ? [] : review.findings.filter(
                 (finding) => finding.side === "en",
               )}
+              reviewComments={compareMode ? noReviewComments : englishReviewComments}
+              lineDiff={commitDiff}
+              diffSide="left"
               onScroll={(line) => synchronize("en", line)}
             />
           </div>
           <div className="editor-pane spanish-pane">
             <div className="pane-header">
               <div>
-                <span className="locale-badge spanish">{activeLanguage.toUpperCase()}</span>
-                <strong>{activeLanguage === "es" ? "Español" : languageName}</strong>
-                <span className="pane-tag editable">
-                  {dirty ? "MODIFIED" : "TRANSLATION"}
+                <span className="locale-badge spanish">{compareMode ? "TO" : activeLanguage.toUpperCase()}</span>
+                <strong>{compareMode ? "To commit" : activeLanguage === "es" ? "Español" : languageName}</strong>
+                <span className={`pane-tag ${compareMode ? "" : "editable"}`}>
+                  {compareMode ? compareToCommit?.sha.slice(0, 8) : dirty ? "MODIFIED" : "TRANSLATION"}
                 </span>
               </div>
-              <span>{spanish.content.split("\n").length} lines</span>
+              <span>{rightDocument.content.split("\n").length} lines</span>
             </div>
             <Editor
-              key={`es-${revision}-${activePath}`}
+              key={`${compareMode ? "to" : "es"}-${compareMode ? compareTo : revision}-${compareMode ? comparePath : activePath}`}
               ref={spanishEditor}
-              label={`${languageName} translation`}
-              content={spanish.content}
-              findings={review.findings.filter(
+              label={compareMode ? "To commit file" : `${languageName} translation`}
+              content={rightDocument.content}
+              readOnly={compareMode}
+              findings={compareMode ? [] : review.findings.filter(
                 (finding) => finding.side === "es",
               )}
-              onChange={(content) =>
+              reviewComments={compareMode ? noReviewComments : spanishReviewComments}
+              lineDiff={commitDiff}
+              diffSide="right"
+              onChange={!compareMode ? (content) =>
                 setDrafts((previous) => ({
                   ...previous,
                   [activePath]: content,
                 }))
-              }
+              : undefined}
               onScroll={(line) => synchronize("es", line)}
             />
           </div>
         </section>
 
-        <section className="task-progress" aria-label="LLM review tasks">
+        {!compareMode && <section className="task-progress" aria-label="LLM review tasks">
           <button
             className="task-progress-toggle"
             aria-expanded={tasksExpanded}
@@ -943,9 +1216,9 @@ export default function App() {
               })}
             </div>
           )}
-        </section>
+        </section>}
 
-        <section className="findings" aria-label="Review findings">
+        {!compareMode && <section className="findings" aria-label="Review findings">
           <div className="findings-header">
             <div className="findings-heading">
               <h2>Review findings</h2>
@@ -1063,8 +1336,8 @@ export default function App() {
               </div>
             )}
           </div>
-        </section>
-        <footer className="status-bar">
+        </section>}
+        {!compareMode && <footer className="status-bar">
           <div>
             <span className="status-check">
               <Check size={13} />
@@ -1097,7 +1370,7 @@ export default function App() {
               Sync scroll
             </label>
           </div>
-        </footer>
+        </footer>}
       </main>
 
       {settingsOpen && (

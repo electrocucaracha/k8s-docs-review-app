@@ -137,7 +137,6 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
                 onChange={(event) =>
                   update({
                     ...providerDefaults[event.target.value as Provider],
-                    pythonExecutable: draft.pythonExecutable,
                   })
                 }
               >
@@ -182,20 +181,6 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
                 onChange={(event) => update({ apiKey: event.target.value })}
               />
             </label>
-            <details>
-              <summary>Python Runtime</summary>
-              <label>
-                Python executable
-                <input
-                  aria-label="Python executable"
-                  value={draft.pythonExecutable}
-                  placeholder="Automatic"
-                  onChange={(event) =>
-                    update({ pythonExecutable: event.target.value })
-                  }
-                />
-              </label>
-            </details>
           </fieldset>
         </div>
         <div hidden={section !== "tasks"}>

@@ -1,4 +1,4 @@
-import type { Finding } from "./review";
+import type { Finding } from "./review.js";
 
 export type ReviewTask = {
   id: string;

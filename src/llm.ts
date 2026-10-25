@@ -1,7 +1,9 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { Finding } from "./review";
-import { defaultTasks, migrateReviewTasks, validateTasks } from "./reviewTasks";
-import type { ReviewTask } from "./reviewTasks";
+import type { Finding } from "./review.js";
+import { defaultTasks, migrateReviewTasks, validateTasks } from "./reviewTasks.js";
+import type { ReviewTask } from "./reviewTasks.js";
+import type { TaskRun } from "./reviewTasks.js";
+import { readCache, writeCache } from "./localCache.js";
 
 export type Provider =
   | "ollama"
@@ -14,7 +16,6 @@ export type LLMSettings = {
   model: string;
   apiBase: string;
   apiKey: string;
-  pythonExecutable: string;
   tasks: ReviewTask[];
   concurrency: number;
 };
@@ -29,15 +30,16 @@ export type LLMRequest = {
   spanish?: string;
   language?: string;
   task?: ReviewTask;
+  reviewComments?: { path: string; line: number | null; body: string }[];
 };
 
 export const providerDefaults: Record<
   Provider,
-  Omit<LLMSettings, "pythonExecutable" | "tasks" | "concurrency">
+  Omit<LLMSettings, "tasks" | "concurrency">
 > = {
   ollama: {
     provider: "ollama",
-    model: "llama3.2",
+    model: "qwen3.8:27b-q4_K_M",
     apiBase: "http://127.0.0.1:11434",
     apiKey: "",
   },
@@ -69,18 +71,23 @@ export const providerDefaults: Record<
 
 export const defaultSettings: LLMSettings = {
   ...providerDefaults.ollama,
-  pythonExecutable: "",
   tasks: defaultTasks.map((task) => ({ ...task })),
   concurrency: 1,
 };
 const storageKey = "k8s-docs-review.llm-settings";
 
 export function validateSettings(settings: LLMSettings): void {
+  if (!settings || typeof settings !== "object")
+    throw new Error("Invalid LLM settings.");
   validateTasks(settings.tasks, settings.concurrency);
   if (!Object.hasOwn(providerDefaults, settings.provider))
     throw new Error("Select a supported provider.");
-  if (!settings.model.trim() || settings.model.length > 200)
+  if (typeof settings.model !== "string" || !settings.model.trim() || settings.model.length > 200)
     throw new Error("Enter a model name of at most 200 characters.");
+  if (typeof settings.apiBase !== "string" || settings.apiBase.length > 2048)
+    throw new Error("Invalid provider endpoint.");
+  if (typeof settings.apiKey !== "string" || settings.apiKey.length > 4096)
+    throw new Error("Invalid provider API key.");
   if (settings.apiBase) {
     let url: URL;
     try {
@@ -99,21 +106,13 @@ export function validateSettings(settings: LLMSettings): void {
         "Use an HTTP(S) endpoint without credentials or query parameters.",
       );
     if (
+      settings.provider !== "ollama" &&
       url.protocol === "http:" &&
       !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
     )
       throw new Error("Remote provider endpoints must use HTTPS.");
   } else if (["ollama", "openai-compatible"].includes(settings.provider))
     throw new Error("This provider requires an API endpoint.");
-  if (
-    settings.pythonExecutable &&
-    !/^python(?:\d+(?:\.\d+)*)?(?:\.exe)?$/i.test(
-      settings.pythonExecutable.split(/[\\/]/).pop() ?? "",
-    )
-  )
-    throw new Error(
-      "Choose a Python executable, such as python3 or a virtual environment's python.",
-    );
 }
 
 export function loadSettings(): LLMSettings {
@@ -131,10 +130,6 @@ export function loadSettings(): LLMSettings {
         typeof saved.apiBase === "string"
           ? saved.apiBase
           : providerDefaults[saved.provider as Provider].apiBase,
-      pythonExecutable:
-        typeof saved.pythonExecutable === "string"
-          ? saved.pythonExecutable
-          : "",
       apiKey: "",
       tasks: migrateReviewTasks(
         Array.isArray(saved.tasks) ? saved.tasks : undefined,
@@ -157,7 +152,6 @@ export function saveSettings(settings: LLMSettings): void {
       provider: settings.provider,
       model: settings.model.trim(),
       apiBase: settings.apiBase.trim(),
-      pythonExecutable: settings.pythonExecutable.trim(),
       tasks: settings.tasks,
       concurrency: settings.concurrency,
       taskSchemaVersion: 2,
@@ -183,7 +177,7 @@ export function parseLLMResult(
   const findings = result.findings.map(
     (item: Record<string, unknown>, index): Finding => {
       if (
-        !item ||
+        !item || typeof item !== "object" ||
         !["links", "structure", "content"].includes(String(item.kind)) ||
         !["warning", "info"].includes(String(item.severity)) ||
         !["en", "es"].includes(String(item.side))
@@ -226,12 +220,36 @@ export async function requestLLMReview(
 ): Promise<LLMResult> {
   validateSettings(request.settings);
   if (request.task) validateTasks([request.task], 1);
-  if (isTauri())
-    return parseLLMResult(
-      await invoke("review_with_llm", { request }),
-      request.english,
-      request.spanish,
-    );
+  if (isTauri()) {
+    const { reviewLLM } = await import("./llmReview.js");
+    const environment = request.settings.apiKey || request.settings.provider === "ollama"
+      ? {}
+      : await invoke<Record<string, string>>("llm_environment", {
+          provider: request.settings.provider,
+        });
+    return reviewLLM(request, {
+      environment,
+      fetch: async (input, init) => {
+        const outgoing = new Request(input, init);
+        outgoing.signal.throwIfAborted();
+        const result = await invoke<{
+          status: number;
+          headers: Record<string, string>;
+          body: string;
+        }>("llm_fetch", {
+          url: outgoing.url,
+          provider: request.settings.provider,
+          headers: Object.fromEntries(outgoing.headers),
+          body: await outgoing.text(),
+        });
+        outgoing.signal.throwIfAborted();
+        return new Response(result.body, {
+          status: result.status,
+          headers: result.headers,
+        });
+      },
+    });
+  }
   const response = await fetch("/api/llm/review", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -251,4 +269,38 @@ export async function requestLLMReview(
     request.english,
     request.spanish,
   );
+}
+
+export type LLMReviewKey = {
+  settings: LLMSettings;
+  tasks: ReviewTask[];
+  language: string;
+  english: string;
+  spanish: string;
+  reviewComments?: { path: string; line: number | null; body: string }[];
+};
+
+async function reviewDigest({ settings, tasks, language, english, spanish, reviewComments = [] }: LLMReviewKey): Promise<string> {
+  // API keys are excluded so stored reviews survive reloads, where keys are not persisted.
+  const text = JSON.stringify([settings.provider, settings.model, settings.apiBase, tasks, language, english, spanish, reviewComments]);
+  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function loadLLMReview(key: LLMReviewKey): Promise<TaskRun[] | undefined> {
+  try {
+    return (await readCache<TaskRun[]>("llm-reviews", await reviewDigest(key)))?.value;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function saveLLMReview(key: LLMReviewKey, runs: TaskRun[]): Promise<void> {
+  const succeeded = runs.filter((run) => run.status === "succeeded");
+  if (!succeeded.length) return;
+  try {
+    await writeCache("llm-reviews", await reviewDigest(key), succeeded);
+  } catch {
+    // Persistence is best effort; the in-memory review remains available.
+  }
 }

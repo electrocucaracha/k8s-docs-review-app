@@ -1,7 +1,10 @@
 import { useEffect, useEffectEvent, useImperativeHandle, useRef } from "react";
-import { EditorState } from "@codemirror/state";
+import { EditorState, StateEffect, StateField } from "@codemirror/state";
+import type { Text } from "@codemirror/state";
 import {
+  Decoration,
   EditorView,
+  WidgetType,
   lineNumbers,
   highlightActiveLine,
   highlightActiveLineGutter,
@@ -16,6 +19,8 @@ import {
 } from "@codemirror/language";
 import { lintGutter, setDiagnostics } from "@codemirror/lint";
 import type { Finding } from "./review";
+import type { PullRequestReviewComment } from "./pullRequest";
+import type { LineDiff } from "./lineDiff";
 
 export type EditorHandle = {
   jump: (line: number, focus?: boolean) => void;
@@ -27,9 +32,106 @@ type Props = {
   readOnly?: boolean;
   label: string;
   findings: Finding[];
+  reviewComments: PullRequestReviewComment[];
+  lineDiff?: LineDiff;
+  diffSide?: "left" | "right";
   onChange?: (content: string) => void;
   onScroll: (line: number) => void;
 };
+
+class ReviewCommentWidget extends WidgetType {
+  private readonly comments: PullRequestReviewComment[];
+
+  constructor(comments: PullRequestReviewComment[]) {
+    super();
+    this.comments = comments;
+  }
+
+  eq(other: ReviewCommentWidget) {
+    return this.comments.length === other.comments.length &&
+      this.comments.every((comment, index) =>
+        comment.id === other.comments[index].id &&
+        comment.body === other.comments[index].body &&
+        comment.author === other.comments[index].author &&
+        comment.url === other.comments[index].url,
+      );
+  }
+
+  toDOM() {
+    const thread = document.createElement("div");
+    thread.className = "review-comment-thread";
+    thread.setAttribute("aria-label", "Pull request review comments");
+    for (const comment of this.comments) {
+      const item = document.createElement("article");
+      const link = document.createElement("a");
+      link.href = comment.url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = `${comment.author} · PR review`;
+      const body = document.createElement("p");
+      body.textContent = comment.body;
+      item.append(link, body);
+      thread.append(item);
+    }
+    return thread;
+  }
+}
+
+function commentDecorations(doc: Text, comments: PullRequestReviewComment[]) {
+  const lines = new Map<number, PullRequestReviewComment[]>();
+  for (const comment of comments) {
+    if (!comment.line || comment.line < 1 || comment.line > doc.lines) continue;
+    lines.set(comment.line, [...(lines.get(comment.line) ?? []), comment]);
+  }
+  return Decoration.set([...lines].map(([number, group]) =>
+    Decoration.widget({
+      widget: new ReviewCommentWidget(group),
+      block: true,
+      side: 1,
+    }).range(doc.line(number).to),
+  ), true);
+}
+
+const setReviewComments = StateEffect.define<PullRequestReviewComment[]>();
+const reviewCommentsField = StateField.define({
+  create: (state) => commentDecorations(state.doc, []),
+  update: (decorations, transaction) => {
+    let next = decorations.map(transaction.changes);
+    for (const effect of transaction.effects) {
+      if (effect.is(setReviewComments))
+        next = commentDecorations(transaction.newDoc, effect.value);
+    }
+    return next;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+type DiffDecorations = { diff: LineDiff; side: "left" | "right" };
+const setDiffDecorations = StateEffect.define<DiffDecorations>();
+function diffDecorations(doc: Text, { diff, side }: DiffDecorations) {
+  const changes = [
+    ...(side === "left" ? diff.removed.map((line) => [line, "diff-removed"] as const) : []),
+    ...(side === "right" ? diff.added.map((line) => [line, "diff-added"] as const) : []),
+    ...diff.replaced.map((line) => [line, "diff-replaced"] as const),
+  ];
+  return Decoration.set(changes
+    .filter(([line]) => line >= 1 && line <= doc.lines)
+    .map(([line, className]) =>
+      Decoration.line({ attributes: { class: className } }).range(doc.line(line).from),
+    ).sort((first, second) => first.from - second.from));
+}
+const diffDecorationsField = StateField.define({
+  create: () => Decoration.none,
+  update: (decorations, transaction) => {
+    let next = decorations.map(transaction.changes);
+    for (const effect of transaction.effects) {
+      if (effect.is(setDiffDecorations))
+        next = diffDecorations(transaction.newDoc, effect.value);
+    }
+    return next;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 export function Editor({
   ref,
@@ -37,6 +139,9 @@ export function Editor({
   readOnly = false,
   label,
   findings,
+  reviewComments,
+  lineDiff,
+  diffSide,
   onChange,
   onScroll,
 }: Props) {
@@ -87,6 +192,8 @@ export function Editor({
           EditorState.readOnly.of(readOnly),
           EditorView.editable.of(!readOnly),
           EditorView.lineWrapping,
+          reviewCommentsField,
+          diffDecorationsField,
           EditorView.contentAttributes.of({
             "aria-label": label,
             spellcheck: "false",
@@ -137,11 +244,27 @@ export function Editor({
 
   useEffect(() => {
     const view = editor.current;
-    if (view && content !== view.state.doc.toString())
+    if (!view) return;
+    view.dispatch({
+      effects: setReviewComments.of(reviewComments),
+    });
+  }, [reviewComments]);
+
+  useEffect(() => {
+    const view = editor.current;
+    if (!view) return;
+    if (content !== view.state.doc.toString()) {
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: content },
       });
-  }, [content]);
+    }
+    view.dispatch({
+      effects: setDiffDecorations.of({
+        diff: lineDiff ?? { added: [], removed: [], replaced: [] },
+        side: diffSide ?? "left",
+      }),
+    });
+  }, [content, lineDiff, diffSide]);
 
   useEffect(() => {
     const view = editor.current;

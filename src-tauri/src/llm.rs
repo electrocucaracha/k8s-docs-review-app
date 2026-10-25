@@ -1,155 +1,290 @@
-use serde_json::Value;
-use std::{
-    fs,
-    io::{Read, Write},
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-    time::Duration,
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue},
+    redirect::Policy,
+    Client, Url,
 };
-use tauri::{AppHandle, Manager};
-use wait_timeout::ChildExt;
+use serde::Serialize;
+use std::{collections::HashMap, time::Duration};
+use tauri::State;
 
-fn validate_python(executable: &str) -> Result<(), String> {
-    let name = Path::new(executable)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or("Choose a Python executable.")?
-        .to_ascii_lowercase();
-    let name = name.strip_suffix(".exe").unwrap_or(&name);
-    let valid = name == "python"
-        || name.strip_prefix("python").is_some_and(|version| {
-            !version.is_empty()
-                && version
-                    .split('.')
-                    .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
-        });
-    if !valid {
-        return Err("Choose a Python executable, not a shell command.".into());
-    }
-    Ok(())
+pub struct LlmTransport {
+    client: Client,
+    active: std::sync::atomic::AtomicUsize,
 }
 
-fn execute(script: &Path, python: &str, request: Value) -> Result<Value, String> {
-    validate_python(python)?;
-    let payload = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
-    if payload.len() > 1024 * 1024 {
-        return Err("The LLM request exceeds 1 MB.".into());
+impl LlmTransport {
+    pub fn new() -> Result<Self, reqwest::Error> {
+        Ok(Self {
+            client: Client::builder()
+                .redirect(Policy::none())
+                .timeout(Duration::from_secs(150))
+                .build()?,
+            active: std::sync::atomic::AtomicUsize::new(0),
+        })
     }
-    let mut child = Command::new(python).arg(script)
-        .env("PYTHONIOENCODING", "utf-8").env("PYTHONUTF8", "1")
-        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null())
-        .spawn().map_err(|_| "Could not start Python. Configure the Python executable in Settings and install requirements.txt.".to_string())?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or("Could not read the LiteLLM response.")?;
-    let reader = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        stdout
-            .take(1024 * 1024 + 1)
-            .read_to_end(&mut bytes)
-            .map(|_| bytes)
-    });
-    let write = child
-        .stdin
-        .take()
-        .ok_or("Could not send the LiteLLM request.")?
-        .write_all(&payload);
-    if write.is_err() {
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err("Could not send the LiteLLM request to Python.".into());
-    }
-    let Some(status) = child
-        .wait_timeout(Duration::from_secs(180))
-        .map_err(|_| "Could not wait for LiteLLM.".to_string())?
-    else {
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err("The LLM request timed out after three minutes.".into());
-    };
-    let output = reader
-        .join()
-        .map_err(|_| "Could not read the LiteLLM response.")?
-        .map_err(|_| "Could not read the LiteLLM response.")?;
-    if !status.success() {
+}
+
+fn validate_endpoint(value: &str, allow_remote_http: bool) -> Result<Url, String> {
+    let url = Url::parse(value).map_err(|_| "Invalid provider endpoint.")?;
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.host_str().is_none()
+    {
         return Err(
-            "The LiteLLM helper failed. Check the Python environment and requirements.txt.".into(),
+            "Use an HTTP(S) provider endpoint without credentials or query parameters.".into(),
         );
     }
-    if output.len() > 1024 * 1024 {
-        return Err("The LLM response is too large.".into());
+    if !allow_remote_http
+        && url.scheme() == "http"
+        && !matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"))
+    {
+        return Err("Remote provider endpoints must use HTTPS.".into());
     }
-    serde_json::from_slice(&output).map_err(|_| "The LiteLLM helper returned invalid JSON.".into())
+    Ok(url)
+}
+
+#[derive(Serialize)]
+pub struct LlmResponse {
+    status: u16,
+    headers: HashMap<String, String>,
+    body: String,
 }
 
 #[tauri::command]
-pub async fn review_with_llm(app: AppHandle, request: Value) -> Result<Value, String> {
-    let project = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or("Missing application directory.")?
-        .to_owned();
-    let script = if cfg!(debug_assertions) {
-        project.join("llm/review.py")
-    } else {
-        app.path()
-            .resource_dir()
-            .map_err(|error| error.to_string())?
-            .join("llm/review.py")
+pub fn llm_environment(provider: String) -> Result<HashMap<String, String>, String> {
+    let names: &[&str] = match provider.as_str() {
+        "openai" | "openai-compatible" => &["OPENAI_API_KEY"],
+        "anthropic" => &["ANTHROPIC_API_KEY"],
+        "gemini" => &[
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GOOGLE_GENERATIVE_AI_API_KEY",
+        ],
+        "ollama" => &[],
+        _ => return Err("Select a supported LLM provider.".into()),
     };
-    if !script.is_file() {
-        return Err("The bundled LiteLLM helper was not found.".into());
+    Ok(names
+        .into_iter()
+        .filter_map(|name| {
+            std::env::var(name)
+                .ok()
+                .map(|value| (name.to_string(), value))
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn llm_fetch(
+    transport: State<'_, LlmTransport>,
+    url: String,
+    provider: String,
+    headers: HashMap<String, String>,
+    body: String,
+) -> Result<LlmResponse, String> {
+    send_request(&transport, url, provider, headers, body).await
+}
+
+async fn send_request(
+    transport: &LlmTransport,
+    url: String,
+    provider: String,
+    headers: HashMap<String, String>,
+    body: String,
+) -> Result<LlmResponse, String> {
+    use std::sync::atomic::Ordering;
+    let endpoint = validate_endpoint(&url, provider == "ollama")?;
+    if body.len() > 1024 * 1024 {
+        return Err("The LLM request exceeds 1 MB.".into());
     }
-    let configured = request
-        .pointer("/settings/pythonExecutable")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned);
-    let virtual_python = project.join(if cfg!(windows) {
-        ".venv/Scripts/python.exe"
-    } else {
-        ".venv/bin/python"
-    });
-    let python = configured
-        .or_else(|| std::env::var("K8S_DOCS_REVIEW_PYTHON").ok())
-        .unwrap_or_else(|| {
-            if cfg!(debug_assertions) && fs::metadata(&virtual_python).is_ok() {
-                virtual_python.to_string_lossy().into_owned()
-            } else if cfg!(windows) {
-                "python".into()
-            } else {
-                "python3".into()
-            }
-        });
-    tauri::async_runtime::spawn_blocking(move || execute(&script, &python, request))
+    let mut outgoing = HeaderMap::new();
+    for (name, value) in headers {
+        if !matches!(
+            name.as_str(),
+            "content-type"
+                | "authorization"
+                | "x-api-key"
+                | "x-goog-api-key"
+                | "anthropic-version"
+                | "anthropic-beta"
+                | "user-agent"
+        ) {
+            return Err("Unsupported LLM request header.".into());
+        }
+        outgoing.insert(
+            HeaderName::from_bytes(name.as_bytes()).map_err(|_| "Invalid LLM header.")?,
+            HeaderValue::from_str(&value).map_err(|_| "Invalid LLM header.")?,
+        );
+    }
+    let previous = transport.active.fetch_add(1, Ordering::SeqCst);
+    struct Active<'a>(&'a std::sync::atomic::AtomicUsize);
+    impl Drop for Active<'_> {
+        fn drop(&mut self) {
+            self.0.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+    let _active = Active(&transport.active);
+    if previous >= 4 {
+        return Err("The four-request LLM limit was reached.".into());
+    }
+    let mut response = transport
+        .client
+        .post(endpoint)
+        .headers(outgoing)
+        .body(body)
+        .send()
         .await
-        .map_err(|_| "The LLM worker failed.".to_string())?
+        .map_err(|_| "Could not connect to the LLM provider. Check the endpoint and connection.")?;
+    if response.status().is_redirection() {
+        return Err(
+            "Provider redirects are not accepted. Configure the final endpoint in Settings.".into(),
+        );
+    }
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .filter(|(name, _)| matches!(name.as_str(), "content-type" | "retry-after"))
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.to_string(), value.to_owned()))
+        })
+        .collect();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "Could not read the LLM response.")?
+    {
+        if bytes.len() + chunk.len() > 1024 * 1024 {
+            return Err("The LLM response is too large.".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let body = String::from_utf8(bytes).map_err(|_| "The LLM response is not UTF-8.")?;
+    Ok(LlmResponse {
+        status,
+        headers,
+        body,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+    };
 
     #[test]
-    fn only_accepts_python_executables() {
-        for value in [
-            "python",
-            "python3",
-            "python3.13",
-            "python.exe",
-            "/tmp/env/bin/python",
+    fn validates_provider_endpoints() {
+        for url in [
+            "http://localhost:11434/v1/chat/completions",
+            "http://[::1]:11434/v1/chat/completions",
+            "http://remote.invalid/v1",
+            "https://api.openai.com/v1/chat/completions",
         ] {
-            assert!(validate_python(value).is_ok());
+            assert!(validate_endpoint(url, true).is_ok(), "{url}");
         }
-        for value in [
-            "sh",
-            "rm",
-            "python -c malicious",
-            "python;command",
-            "python.",
-            "python3.sh",
+        assert!(validate_endpoint("http://remote.invalid/v1", false).is_err());
+        for url in [
+            "file:///tmp/model",
+            "https://key@example.invalid/v1",
+            "https://example.invalid?key=secret",
+            "https://example.invalid/#fragment",
         ] {
-            assert!(validate_python(value).is_err());
+            assert!(validate_endpoint(url, true).is_err(), "{url}");
         }
+    }
+
+    #[test]
+    fn native_http_preserves_provider_responses_and_rejects_redirects() {
+        for (status, body) in [
+            ("200 OK", "{\"choices\":[]}"),
+            ("401 Unauthorized", "{\"error\":\"invalid key\"}"),
+            ("302 Found", ""),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let worker = std::thread::spawn(move || {
+                let (mut socket, _) = listener.accept().unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut request = [0; 4096];
+                let count = socket.read(&mut request).unwrap();
+                let text = String::from_utf8_lossy(&request[..count]);
+                assert!(text.starts_with("POST /v1/chat/completions "));
+                assert!(text
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer fixture-key"));
+                write!(socket, "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nLocation: https://redirect.invalid\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+            });
+            let mut transport = LlmTransport::new().unwrap();
+            transport.client = Client::builder()
+                .no_proxy()
+                .redirect(Policy::none())
+                .build()
+                .unwrap();
+            let result = tauri::async_runtime::block_on(send_request(
+                &transport,
+                format!("http://{address}/v1/chat/completions"),
+                "ollama".into(),
+                HashMap::from([("authorization".into(), "Bearer fixture-key".into())]),
+                "{}".into(),
+            ));
+            if status.starts_with("302") {
+                assert!(result.err().unwrap().contains("redirects"));
+            } else {
+                let response = result.unwrap();
+                assert_eq!(
+                    response.status,
+                    if status.starts_with("200") { 200 } else { 401 }
+                );
+                assert_eq!(response.body, body);
+            }
+            assert_eq!(
+                transport.active.load(std::sync::atomic::Ordering::SeqCst),
+                0
+            );
+            worker.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn enforces_request_size_headers_and_concurrency_before_network_access() {
+        let transport = LlmTransport::new().unwrap();
+        let send = |headers, body| {
+            tauri::async_runtime::block_on(send_request(
+                &transport,
+                "http://localhost:11434/v1/chat/completions".into(),
+                "ollama".into(),
+                headers,
+                body,
+            ))
+        };
+        assert!(send(HashMap::new(), "a".repeat(1024 * 1024 + 1))
+            .err()
+            .unwrap()
+            .contains("exceeds 1 MB"));
+        assert!(send(
+            HashMap::from([("host".into(), "untrusted.invalid".into())]),
+            "{}".into()
+        )
+        .err()
+        .unwrap()
+        .contains("Unsupported"));
+        transport
+            .active
+            .store(4, std::sync::atomic::Ordering::SeqCst);
+        assert!(send(HashMap::new(), "{}".into())
+            .err()
+            .unwrap()
+            .contains("four-request"));
     }
 }

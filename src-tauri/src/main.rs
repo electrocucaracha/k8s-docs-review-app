@@ -388,13 +388,18 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            app.manage(llm::LlmTransport::new()?);
+            Ok(())
+        })
         .manage(Repository::default())
         .invoke_handler(tauri::generate_handler![
             load_pull_request,
             open_pull_request,
             save_translation,
             export_markdown,
-            llm::review_with_llm,
+            llm::llm_fetch,
+            llm::llm_environment,
             published_references::check_published_reference,
             published_references::open_issue_draft
         ])
