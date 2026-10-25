@@ -134,7 +134,7 @@ invalidate previous LLM findings. The model receives no tools and cannot
 modify files. The pair is limited to 100,000 characters; the selected model
 must also support the supplied context. Requests time out after three minutes.
 
-To keep requests small, blank lines are omitted from prompts and pairs over
+To keep requests small, empty lines are omitted from prompts and pairs over
 12,000 characters are split into heading-aligned excerpts. Each excerpt is a
 separate request, sent in parallel up to the **Parallel task limit**, and their
 findings are merged and

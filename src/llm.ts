@@ -10,11 +10,7 @@ import type { TaskRun } from "./reviewTasks.js";
 import { readCache, writeCache } from "./localCache.js";
 
 export type Provider =
-  | "ollama"
-  | "openai"
-  | "anthropic"
-  | "gemini"
-  | "openai-compatible";
+  "ollama" | "openai" | "anthropic" | "gemini" | "openai-compatible";
 export type LLMSettings = {
   provider: Provider;
   model: string;
