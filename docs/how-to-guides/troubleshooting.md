@@ -31,19 +31,12 @@ Desktop loading additionally needs Git on `PATH`.
 If a selected pull request contains no added or modified Markdown in the selected language,
 choose another pull request.
 
-## LLM review cannot start Python
+## LLM runtime setup
 
-1. Install Python 3.10 or newer.
-2. Follow the
-   [Python environment setup](https://github.com/electrocucaracha/k8s-docs-review-app/blob/main/CONTRIBUTING.md#python-environment)
-   to install the project's requirements.
-3. In **Settings > Python Runtime > Python executable**,
-   select the interpreter from that environment.
-4. Retry **Test connection**.
-
-In local development, the project `.venv` is discovered automatically.
-A packaged desktop app bundles the helper script, not Python or LiteLLM.
-`K8S_DOCS_REVIEW_PYTHON` is an alternative to selecting an interpreter in Settings.
+LLM review uses a bundled TypeScript SDK, not Python. The packaged desktop app
+also needs no installed Node.js runtime. Python executable settings from older
+versions are ignored. During browser development, install npm dependencies
+with `npm ci` and start `npm run dev`; a static preview has no LLM server.
 
 ## The provider connection fails or a task times out
 
@@ -51,17 +44,20 @@ Check the provider, model, endpoint, and credentials in Settings.
 For the default Ollama setup, start Ollama and run:
 
 ```sh
-ollama pull llama3.2
+ollama pull qwen3.8:27b-q4_K_M
 ```
 
 Use **Test connection** before submitting a document.
 API keys are session-only and must be entered again after restarting the app,
-unless the Python helper obtains them from the provider's environment variables.
+unless they are supplied through the server or desktop app's launch environment.
+See [runtime and credentials](../references/configuration.md#llm-runtime-and-credentials).
+Ollama must support `/v1/chat/completions`. Configure the final provider endpoint;
+redirects are rejected rather than forwarding credentials to another URL.
 
 For a local model under memory or processing pressure,
 set **Parallel task limit** to `1`.
 Reduce enabled tasks if necessary.
-Each request has a three-minute timeout.
+Provider requests have a 150-second deadline within the three-minute review limit.
 Retry a failed task from **Review Tasks** without rerunning successful tasks.
 
 For document-size failures, the pair is limited to 100,000 characters;

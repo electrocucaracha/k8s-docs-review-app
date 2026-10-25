@@ -21,18 +21,18 @@ The same TypeScript review engine runs in browser and desktop modes.
 Browser development
   React interface -> GitHub public API -> PR files at a pinned head revision
                   -> local Markdown checks
-                  -> Vite bridge -> Python / LiteLLM -> configured provider
+                  -> Vite bridge / TypeScript AI SDK -> configured provider
                   -> Vite bridge -> published Kubernetes documentation
 
 Desktop
   React interface -> Tauri / Rust -> app-managed Git checkout
-                                 -> Python / LiteLLM -> configured provider
                                  -> published Kubernetes documentation
+                  -> TypeScript AI SDK -> Tauri HTTP transport -> configured provider
 ```
 
 In browser mode, files and drafts live in memory.
 The Vite development server supplies the local HTTP bridges
-for Python execution and published-reference checking.
+for LLM review and published-reference checking.
 Those bridges are not part of the static production build.
 
 In desktop mode, Rust commands manage a checkout in the operating system's application cache.
@@ -42,7 +42,7 @@ Clean cached checkouts refresh; locally edited checkouts retain their revision.
 Save guards protect against path escapes and external file changes.
 
 This is why GitHub Pages hosts the documentation rather than the complete review service:
-Pages cannot execute Python, run Git, or provide the local bridges.
+Pages cannot run the backend, run Git, or provide the local bridges.
 
 ## Mechanical differences are evidence, not verdicts
 
@@ -66,11 +66,21 @@ not confirmed broken links.
 
 ## AI review answers a different question
 
-The Python helper uses LiteLLM to send the current pair
+The TypeScript AI SDK uses provider adapters to send the current pair
 to the provider selected in Settings.
 Independent tasks focus on different concerns such as meaning, completeness, or grammar.
+For pull requests, inline review comments appear beside their referenced lines.
+The explorer's **PR comments** section shows collapsible, Markdown-rendered
+conversation comments.
+Inline comments on the current file are also provided to the model as context, so
+suggestions already addressed in the documents are not repeated. Comments are
+untrusted input; the model should judge the current text rather than treat a comment
+as authoritative.
 The model has no tools and cannot edit files.
 Returned findings have validated categories and source locations.
+Desktop requests use a restricted Rust HTTP transport to avoid browser CORS
+without installing Python or Node.js. Browser development makes provider
+requests from the Vite server. Both paths use the same prompts and validators.
 
 Valid output structure does not make a suggestion true.
 A model may propose a subjective rewrite or misunderstand Kubernetes behavior.

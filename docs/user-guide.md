@@ -23,6 +23,20 @@ with the matching label. Select a PR to load its added or modified Markdown
 files in that language into the explorer automatically. Use **Refresh pull
 requests** to update the list or retry a failed request.
 
+The PR information shows the full **Head commit** SHA linked to the loaded
+commit on GitHub. After a contributor pushes fixes or applies suggestions,
+refresh the list and select the same PR again to load its latest head. If the
+head changed, **Changes since** links to the file and line differences between
+the previously loaded commit and the new one. This comparison is kept while
+that PR remains open in the app; switching PRs or restarting clears it.
+Desktop checkouts with local edits keep showing their cached head instead.
+
+For a PR with multiple commits, expand **Compare PR commits** in the explorer,
+select the **From** and **To** commits, and choose **Compare commits**. The
+explorer lists Markdown files changed between those revisions. Select a file
+to view its contents at both commits side by side. Choose **Back to PR review**
+to return to the translation review.
+
 Browser mode downloads these files and their English
 counterparts at the PR's exact head revision and reuses already loaded
 revisions in the session. It indexes the repository tree for local reference
@@ -77,27 +91,26 @@ repository after a conflict. Export controls use native save dialogs.
 ## Configure LLM review
 
 Open **Settings** using the gear button. The defaults are Ollama, model
-`llama3.2`, and endpoint `http://127.0.0.1:11434`. Other choices include
+`qwen3.8:27b-q4_K_M`, and endpoint `http://127.0.0.1:11434`. Other choices include
 OpenAI, Anthropic, Google Gemini, and OpenAI-compatible endpoints such as a
 LiteLLM Proxy.
 
-LLM reviews use the Python LiteLLM SDK in both browser development and desktop
-mode. Install Python 3.10 or newer and prepare a local environment as described
-in the [contribution guide](https://github.com/electrocucaracha/k8s-docs-review-app/blob/main/CONTRIBUTING.md#python-environment).
-
-In development, the app discovers the local virtual environment automatically.
-For a packaged desktop app, set **Python Runtime > Python executable** to the
-full path of a Python environment with the requirements installed.
-Alternatively set `K8S_DOCS_REVIEW_PYTHON` before launching the application.
-The app bundles the review helper, not a Python interpreter or LiteLLM's
-dependencies.
+LLM reviews use the TypeScript AI SDK in both browser development and desktop
+mode. No Python setup is needed, and the packaged desktop app does not require
+an installed Node.js runtime. Ollama must support its OpenAI-compatible
+`/v1/chat/completions` API.
 
 Install and start [Ollama](https://ollama.com), then download the default
 model:
 
 ```sh
-ollama pull llama3.2
+ollama pull qwen3.8:27b-q4_K_M
 ```
+
+This quality-oriented multilingual default targets a Mac mini M4 with 64 GB
+of unified memory and explicitly selects GGUF Q4_K_M. Leave concurrency at one;
+context and runtime need additional memory beyond the model weights. You can edit the model
+for other hardware or faster reviews. Existing saved model choices are unchanged.
 
 Use **Test connection** to verify the configured endpoint and model. Select
 **Review with LLM** to review the current English/translation document pair. This
@@ -107,9 +120,13 @@ reviews require confirmation before document submission. Connection tests
 send only a short probe.
 
 Provider settings are saved locally, but API keys stay in memory for the
-current session. The LiteLLM SDK can also use the provider's standard
-environment variables. Keys are passed to the helper through stdin, not
-command arguments or log output. Non-local provider endpoints must use HTTPS.
+current session. You can also set `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or
+`GEMINI_API_KEY` in the environment used to launch the server or desktop app.
+Gemini also accepts `GOOGLE_API_KEY` and `GOOGLE_GENERATIVE_AI_API_KEY`.
+An entered key takes precedence. Keys are not passed in command arguments or
+written to log output. Remote Ollama endpoints may use HTTP; other
+non-local provider endpoints must use HTTPS. Remote Ollama traffic over HTTP is
+unencrypted, so use a trusted network or HTTPS when available.
 
 LLM findings are marked **LLM**, have validated source locations, and appear
 alongside offline findings in the review panel. Edits or configuration changes
@@ -121,7 +138,7 @@ must also support the supplied context. Requests time out after three minutes.
 
 The default LLM tasks are translation accuracy, content completeness, Spanish
 grammar, terminology, technical fidelity, and Markdown/metadata. Each task
-makes a separate LiteLLM request using the configured provider and model.
+makes a separate AI SDK request using the configured provider and model.
 Built-in tasks follow the active translation language. Custom instructions are
 preserved; adjust language-specific custom prompts in Settings as needed.
 History-backed Spanish editorial checks run only on Spanish documents.
