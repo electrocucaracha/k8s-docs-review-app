@@ -95,12 +95,17 @@ export async function getOpenPullRequests(
     direction: "desc",
   });
   const entries = await githubPages<
-    OpenPullRequest & { pull_request?: unknown }
+    OpenPullRequest & {
+      pull_request?: unknown;
+      labels?: { name: string }[];
+    }
   >(`/issues?${parameters}`);
   return entries
     .filter(
       (entry) =>
         entry.pull_request &&
+        (entry.labels?.filter((label) => label.name.startsWith("language/"))
+          .length ?? 0) <= 1 &&
         Number.isSafeInteger(entry.number) &&
         entry.number > 0 &&
         typeof entry.title === "string",
