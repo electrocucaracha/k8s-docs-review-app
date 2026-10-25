@@ -21,7 +21,9 @@ export function llmBridge(): Plugin {
         }
         if (
           request.headers.origin !== `http://${request.headers.host}` ||
-          !/^application\/json(?:;|$)/i.test(request.headers["content-type"] ?? "")
+          !/^application\/json(?:;|$)/i.test(
+            request.headers["content-type"] ?? "",
+          )
         ) {
           reply(403, { error: "Only same-origin JSON requests are accepted." });
           return;
@@ -61,13 +63,19 @@ export function llmBridge(): Plugin {
             if (!response.writableEnded) controller.abort();
           });
           try {
-            reply(200, await reviewLLM(payload, {
-              environment: process.env,
-              signal: controller.signal,
-            }));
+            reply(
+              200,
+              await reviewLLM(payload, {
+                environment: process.env,
+                signal: controller.signal,
+              }),
+            );
           } catch (error) {
             reply(controller.signal.aborted ? 504 : 502, {
-              error: error instanceof Error ? error.message : "The LLM review failed.",
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "The LLM review failed.",
             });
           } finally {
             clearTimeout(timeout);

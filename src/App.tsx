@@ -45,9 +45,22 @@ import {
   comparePullRequestCommits,
   loadCommitDocument,
 } from "./pullRequest";
-import type { CommitFileChange, Language, OpenPullRequest, PullRequestComment, PullRequestReviewComment, PullRequestWorkspace } from "./pullRequest";
+import type {
+  CommitFileChange,
+  Language,
+  OpenPullRequest,
+  PullRequestComment,
+  PullRequestReviewComment,
+  PullRequestWorkspace,
+} from "./pullRequest";
 import { SettingsDialog } from "./SettingsDialog";
-import { loadLLMReview, loadSettings, requestLLMReview, saveLLMReview, saveSettings } from "./llm";
+import {
+  loadLLMReview,
+  loadSettings,
+  requestLLMReview,
+  saveLLMReview,
+  saveSettings,
+} from "./llm";
 import type { LLMSettings } from "./llm";
 import { defaultTasks, runReviewTasks } from "./reviewTasks";
 import type { TaskRun } from "./reviewTasks";
@@ -103,11 +116,24 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [language, setLanguage] = useState("es");
-  const [languages, setLanguages] = useState<Language[]>([{ code: "es", name: "Spanish" }]);
-  const [openPullRequests, setOpenPullRequests] = useState<OpenPullRequest[]>([]);
+  const [languages, setLanguages] = useState<Language[]>([
+    { code: "es", name: "Spanish" },
+  ]);
+  const [openPullRequests, setOpenPullRequests] = useState<OpenPullRequest[]>(
+    [],
+  );
   const [unreviewable, setUnreviewable] = useState<number[]>([]);
-  const [failures, setFailures] = useState<{ source: string; message: string }[]>([]);
-  const recordFailure = (source: string, cause: unknown) => setFailures((current) => [...current, { source, message: cause instanceof Error ? cause.message : String(cause) }]);
+  const [failures, setFailures] = useState<
+    { source: string; message: string }[]
+  >([]);
+  const recordFailure = (source: string, cause: unknown) =>
+    setFailures((current) => [
+      ...current,
+      {
+        source,
+        message: cause instanceof Error ? cause.message : String(cause),
+      },
+    ]);
   const [selectedPullRequest, setSelectedPullRequest] = useState("");
   const [previousHead, setPreviousHead] = useState<string | null>(null);
   const [compareFrom, setCompareFrom] = useState("");
@@ -115,7 +141,10 @@ export default function App() {
   const [compareMode, setCompareMode] = useState(false);
   const [compareFiles, setCompareFiles] = useState<CommitFileChange[]>([]);
   const [comparePath, setComparePath] = useState("");
-  const [compareDocuments, setCompareDocuments] = useState<{ from: Document; to: Document } | null>(null);
+  const [compareDocuments, setCompareDocuments] = useState<{
+    from: Document;
+    to: Document;
+  } | null>(null);
   const [compareBusy, setCompareBusy] = useState(false);
   const compareRequest = useRef(0);
   const [pullRequestsBusy, setPullRequestsBusy] = useState(true);
@@ -155,17 +184,19 @@ export default function App() {
     "reviewComments" in workspace ? workspace.reviewComments : noReviewComments;
   const pullRequestComments =
     "comments" in workspace ? workspace.comments : noPullRequestComments;
-  const commits =
-    "commits" in workspace ? workspace.commits : [];
+  const commits = "commits" in workspace ? workspace.commits : [];
   const activeReviewComments = useMemo(
-    () => reviewComments
-      .filter((comment) => comment.path === activePath)
-      .map(({ path, line, body }) => ({ path, line, body })),
+    () =>
+      reviewComments
+        .filter((comment) => comment.path === activePath)
+        .map(({ path, line, body }) => ({ path, line, body })),
     [reviewComments, activePath],
   );
   const revision = pullRequest?.sha ?? workspace.name;
   const activeLanguage = activePath.split("/")[1];
-  const languageName = languages.find((item) => item.code === activeLanguage)?.name ?? activeLanguage;
+  const languageName =
+    languages.find((item) => item.code === activeLanguage)?.name ??
+    activeLanguage;
 
   const original = workspace.documents.find(
     (document) => document.path === activePath,
@@ -182,16 +213,21 @@ export default function App() {
     content: drafts[activePath] ?? original.content,
   };
   const leftDocument = compareMode
-    ? compareDocuments?.from ?? { path: comparePath, content: "" }
+    ? (compareDocuments?.from ?? { path: comparePath, content: "" })
     : english;
   const rightDocument = compareMode
-    ? compareDocuments?.to ?? { path: comparePath, content: "" }
+    ? (compareDocuments?.to ?? { path: comparePath, content: "" })
     : spanish;
   const commitDiff = useMemo(
-    () => compareDocuments ? diffLines(compareDocuments.from.content, compareDocuments.to.content) : undefined,
+    () =>
+      compareDocuments
+        ? diffLines(compareDocuments.from.content, compareDocuments.to.content)
+        : undefined,
     [compareDocuments],
   );
-  const compareFromCommit = commits.find((commit) => commit.sha === compareFrom);
+  const compareFromCommit = commits.find(
+    (commit) => commit.sha === compareFrom,
+  );
   const compareToCommit = commits.find((commit) => commit.sha === compareTo);
   const compareList = compareFiles.filter((file) =>
     file.path.toLowerCase().includes(query.toLowerCase()),
@@ -220,16 +256,27 @@ export default function App() {
       : null;
   const llmFindings =
     activeLLMResult?.runs.flatMap((run) => run.findings) ?? [];
-  const enabledTasks = settings.tasks.filter((task) => task.enabled).map((task) => {
-    if (activeLanguage === "es" || !defaultTasks.some((builtin) => builtin.id === task.id && builtin.instructions === task.instructions)) return task;
-    return {
-      ...task,
-      name: task.name.replaceAll("Spanish", languageName),
-      instructions: task.id === "grammar"
-        ? `Review ${languageName} spelling, grammar, agreement, punctuation and consistency of address. Follow this language's conventions, not Spanish-specific rules. Report actionable corrections rather than subjective rewrites. Preserve names, commands, paths, URLs and quoted examples.`
-        : task.instructions.replaceAll("Spanish", languageName),
-    };
-  });
+  const enabledTasks = settings.tasks
+    .filter((task) => task.enabled)
+    .map((task) => {
+      if (
+        activeLanguage === "es" ||
+        !defaultTasks.some(
+          (builtin) =>
+            builtin.id === task.id &&
+            builtin.instructions === task.instructions,
+        )
+      )
+        return task;
+      return {
+        ...task,
+        name: task.name.replaceAll("Spanish", languageName),
+        instructions:
+          task.id === "grammar"
+            ? `Review ${languageName} spelling, grammar, agreement, punctuation and consistency of address. Follow this language's conventions, not Spanish-specific rules. Report actionable corrections rather than subjective rewrites. Preserve names, commands, paths, URLs and quoted examples.`
+            : task.instructions.replaceAll("Spanish", languageName),
+      };
+    });
   const activePublishedResult =
     publishedResult?.path === activePath &&
     publishedResult.revision === revision &&
@@ -275,19 +322,41 @@ export default function App() {
   useEffect(() => {
     let current = true;
     void getLanguages().then(
-      (result) => { if (current) setLanguages(result); },
-      (cause) => { if (current) { setLanguageError(`Could not load languages: ${String(cause)}`); recordFailure("Languages", cause); } },
+      (result) => {
+        if (current) setLanguages(result);
+      },
+      (cause) => {
+        if (current) {
+          setLanguageError(`Could not load languages: ${String(cause)}`);
+          recordFailure("Languages", cause);
+        }
+      },
     );
-    return () => { current = false; };
+    return () => {
+      current = false;
+    };
   }, [refresh]);
 
   useEffect(() => {
     let current = true;
-    void getOpenPullRequests(language).then(
-      (result) => { if (current) setOpenPullRequests(result); },
-      (cause) => { if (current) { setPullRequestsError(String(cause)); recordFailure("Pull request list", cause); } },
-    ).finally(() => { if (current) setPullRequestsBusy(false); });
-    return () => { current = false; };
+    void getOpenPullRequests(language)
+      .then(
+        (result) => {
+          if (current) setOpenPullRequests(result);
+        },
+        (cause) => {
+          if (current) {
+            setPullRequestsError(String(cause));
+            recordFailure("Pull request list", cause);
+          }
+        },
+      )
+      .finally(() => {
+        if (current) setPullRequestsBusy(false);
+      });
+    return () => {
+      current = false;
+    };
   }, [language, refresh]);
 
   const enabledTasksKey = JSON.stringify(enabledTasks);
@@ -295,12 +364,40 @@ export default function App() {
   useEffect(() => {
     if (compareMode || hasLLMResult || llmBusy || !source) return;
     let current = true;
-    const snapshot = { path: activePath, revision, english: english.content, spanish: spanish.content, configuration: JSON.stringify(settings) };
-    void loadLLMReview({ settings, tasks: JSON.parse(enabledTasksKey), language: activeLanguage, english: snapshot.english, spanish: snapshot.spanish, reviewComments: activeReviewComments }).then((runs) => {
+    const snapshot = {
+      path: activePath,
+      revision,
+      english: english.content,
+      spanish: spanish.content,
+      configuration: JSON.stringify(settings),
+    };
+    void loadLLMReview({
+      settings,
+      tasks: JSON.parse(enabledTasksKey),
+      language: activeLanguage,
+      english: snapshot.english,
+      spanish: snapshot.spanish,
+      reviewComments: activeReviewComments,
+    }).then((runs) => {
       if (current && runs) setLLMResult({ ...snapshot, runs });
     });
-    return () => { current = false; };
-  }, [compareMode, hasLLMResult, llmBusy, source, activePath, revision, english.content, spanish.content, settings, enabledTasksKey, activeLanguage, activeReviewComments]);
+    return () => {
+      current = false;
+    };
+  }, [
+    compareMode,
+    hasLLMResult,
+    llmBusy,
+    source,
+    activePath,
+    revision,
+    english.content,
+    spanish.content,
+    settings,
+    enabledTasksKey,
+    activeLanguage,
+    activeReviewComments,
+  ]);
 
   function updatePullRequestList(nextLanguage = language) {
     setOpenPullRequests([]);
@@ -408,20 +505,36 @@ export default function App() {
     setBusy(true);
     try {
       setNotice(`Loading PR #${number}...`);
-      const { pullRequest, reviewPaths, reviewComments, comments, commits } = await getPullRequest(number, language);
+      const { pullRequest, reviewPaths, reviewComments, comments, commits } =
+        await getPullRequest(number, language);
       if (isTauri()) {
         setNotice(`Preparing local checkout for PR #${number}...`);
         const next = await invoke<PullRequestWorkspace>("load_pull_request", {
           pullRequest,
           reviewPaths,
         });
-        replaceWorkspace({ ...next, native: true, reviewComments, comments, commits });
+        replaceWorkspace({
+          ...next,
+          native: true,
+          reviewComments,
+          comments,
+          commits,
+        });
       } else {
         setNotice(`Loading files for PR #${number}...`);
-        replaceWorkspace(await loadRemotePullRequest(pullRequest, reviewPaths, reviewComments, comments, commits));
+        replaceWorkspace(
+          await loadRemotePullRequest(
+            pullRequest,
+            reviewPaths,
+            reviewComments,
+            comments,
+            commits,
+          ),
+        );
       }
     } catch (cause) {
-      if (cause instanceof NothingToReview) setUnreviewable((current) => [...current, number]);
+      if (cause instanceof NothingToReview)
+        setUnreviewable((current) => [...current, number]);
       recordFailure(`PR #${number}`, cause);
       setSelectedPullRequest("");
       setError(String(cause));
@@ -434,7 +547,8 @@ export default function App() {
   async function openPullRequest() {
     if (!pullRequest) return;
     try {
-      if (isTauri()) await invoke("open_pull_request", { number: pullRequest.number });
+      if (isTauri())
+        await invoke("open_pull_request", { number: pullRequest.number });
       else window.open(pullRequest.url, "_blank", "noopener,noreferrer");
     } catch (cause) {
       setError(String(cause));
@@ -442,7 +556,14 @@ export default function App() {
   }
 
   async function compareCommits() {
-    if (!pullRequest || compareBusy || !compareFrom || !compareTo || compareFrom === compareTo) return;
+    if (
+      !pullRequest ||
+      compareBusy ||
+      !compareFrom ||
+      !compareTo ||
+      compareFrom === compareTo
+    )
+      return;
     const requestId = ++compareRequest.current;
     setCompareBusy(true);
     setError("");
@@ -464,7 +585,8 @@ export default function App() {
         loadCommitDocument(changes[0].previousPath ?? path, compareFrom),
         loadCommitDocument(path, compareTo),
       ]);
-      if (requestId === compareRequest.current) setCompareDocuments({ from, to });
+      if (requestId === compareRequest.current)
+        setCompareDocuments({ from, to });
     } catch (cause) {
       if (requestId === compareRequest.current)
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -482,10 +604,14 @@ export default function App() {
     setError("");
     try {
       const [from, to] = await Promise.all([
-        loadCommitDocument(compareFiles.find((file) => file.path === path)?.previousPath ?? path, compareFrom),
+        loadCommitDocument(
+          compareFiles.find((file) => file.path === path)?.previousPath ?? path,
+          compareFrom,
+        ),
         loadCommitDocument(path, compareTo),
       ]);
-      if (requestId === compareRequest.current) setCompareDocuments({ from, to });
+      if (requestId === compareRequest.current)
+        setCompareDocuments({ from, to });
     } catch (cause) {
       if (requestId === compareRequest.current)
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -650,7 +776,14 @@ export default function App() {
           setLLMResult({ ...snapshot, runs: [...preserved, ...current] }),
       );
       void saveLLMReview(
-        { settings, tasks: enabledTasks, language: activeLanguage, english: snapshot.english, spanish: snapshot.spanish, reviewComments: activeReviewComments },
+        {
+          settings,
+          tasks: enabledTasks,
+          language: activeLanguage,
+          english: snapshot.english,
+          spanish: snapshot.spanish,
+          reviewComments: activeReviewComments,
+        },
         [...preserved, ...runs],
       );
       const failures = runs.filter((run) => run.status === "failed").length;
@@ -738,20 +871,54 @@ export default function App() {
               disabled={busy || llmBusy || compareBusy}
               onChange={(event) => updatePullRequestList(event.target.value)}
             >
-              {languages.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
+              {languages.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.name}
+                </option>
+              ))}
             </select>
-            <label className="pr-input" aria-busy={pullRequestsBusy || busy || compareBusy}>
-              {pullRequestsBusy || busy || compareBusy ? <LoaderCircle size={16} className="spin" /> :
-              <GitPullRequest size={16} />
-              }
+            <label
+              className="pr-input"
+              aria-busy={pullRequestsBusy || busy || compareBusy}
+            >
+              {pullRequestsBusy || busy || compareBusy ? (
+                <LoaderCircle size={16} className="spin" />
+              ) : (
+                <GitPullRequest size={16} />
+              )}
               <select
                 aria-label="Pull request"
                 value={selectedPullRequest}
-                disabled={busy || llmBusy || compareBusy || pullRequestsBusy || !openPullRequests.length}
-                onChange={(event) => { if (event.target.value) void loadPullRequest(Number(event.target.value)); }}
+                disabled={
+                  busy ||
+                  llmBusy ||
+                  compareBusy ||
+                  pullRequestsBusy ||
+                  !openPullRequests.length
+                }
+                onChange={(event) => {
+                  if (event.target.value)
+                    void loadPullRequest(Number(event.target.value));
+                }}
               >
-                <option value="">{pullRequestsBusy ? "Loading pull requests..." : pullRequestsError ? "Could not load pull requests" : openPullRequests.length ? "Select a pull request" : "No open pull requests"}</option>
-                {openPullRequests.map((item) => <option key={item.number} value={item.number} disabled={unreviewable.includes(item.number)}>#{item.number} {item.title}</option>)}
+                <option value="">
+                  {pullRequestsBusy
+                    ? "Loading pull requests..."
+                    : pullRequestsError
+                      ? "Could not load pull requests"
+                      : openPullRequests.length
+                        ? "Select a pull request"
+                        : "No open pull requests"}
+                </option>
+                {openPullRequests.map((item) => (
+                  <option
+                    key={item.number}
+                    value={item.number}
+                    disabled={unreviewable.includes(item.number)}
+                  >
+                    #{item.number} {item.title}
+                  </option>
+                ))}
               </select>
             </label>
             <button
@@ -864,7 +1031,12 @@ export default function App() {
                 <button
                   type="button"
                   className="compare-commits-button"
-                  disabled={compareBusy || !compareFrom || !compareTo || compareFrom === compareTo}
+                  disabled={
+                    compareBusy ||
+                    !compareFrom ||
+                    !compareTo ||
+                    compareFrom === compareTo
+                  }
                   onClick={() => void compareCommits()}
                 >
                   {compareBusy ? "Comparing..." : "Compare commits"}
@@ -883,17 +1055,29 @@ export default function App() {
             <details className="pr-review-comments">
               <summary>PR comments ({pullRequestComments.length})</summary>
               <div className="pr-review-comment-list">
-                {pullRequestComments.length ? pullRequestComments.map((comment) => (
-                  <details className="pr-comment" key={comment.id}>
-                    <summary>
-                      <span>{comment.author} · {new Date(comment.date).toLocaleDateString()}</span>
-                      <a href={comment.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                        Open on GitHub
-                      </a>
-                    </summary>
-                    <MarkdownComment markdown={comment.body} />
-                  </details>
-                )) : <p>No PR comments yet.</p>}
+                {pullRequestComments.length ? (
+                  pullRequestComments.map((comment) => (
+                    <details className="pr-comment" key={comment.id}>
+                      <summary>
+                        <span>
+                          {comment.author} ·{" "}
+                          {new Date(comment.date).toLocaleDateString()}
+                        </span>
+                        <a
+                          href={comment.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          Open on GitHub
+                        </a>
+                      </summary>
+                      <MarkdownComment markdown={comment.body} />
+                    </details>
+                  ))
+                ) : (
+                  <p>No PR comments yet.</p>
+                )}
               </div>
             </details>
           </div>
@@ -907,53 +1091,68 @@ export default function App() {
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        <div className="file-list" aria-label={compareMode ? "Files changed between commits" : `${languageName} files`}>
-          {compareMode ? compareList.map((file) => (
-            <button
-              key={file.path}
-              className={`file-item ${file.path === comparePath ? "active" : ""}`}
-              disabled={compareBusy}
-              onClick={() => void selectComparedFile(file.path)}
-              title={file.path}
-            >
-              <FileText size={16} />
-              <span>
-                <strong>{fileName(file.path)}</strong>
-                <small>{file.status} · +{file.additions} −{file.deletions}</small>
-              </span>
-              <ChevronRight size={13} />
-            </button>
-          )) : files.map((document) => (
-            <button
-              key={document.path}
-              className={`file-item ${document.path === activePath ? "active" : ""}`}
-              onClick={() => {
-                setActivePath(document.path);
-                setSelected(null);
-                setNotice("");
-              }}
-              title={document.path}
-            >
-              <FileText size={16} />
-              <span>
-                <strong>{fileName(document.path)}</strong>
-                <small>
-                  {displayPath(document.path)
-                    .split("/")
-                    .slice(0, -1)
-                    .join("/") || `content/${activeLanguage}`}
-                </small>
-              </span>
-              {drafts[document.path] !== undefined &&
-              drafts[document.path] !== document.content ? (
-                <span className="dirty-dot" />
-              ) : (
-                <ChevronRight size={13} />
-              )}
-            </button>
-          ))}
-          {compareMode && !compareList.length && <p className="empty-message">No changed Markdown files</p>}
-          {!compareMode && !files.length && <p className="empty-message">No matching files</p>}
+        <div
+          className="file-list"
+          aria-label={
+            compareMode
+              ? "Files changed between commits"
+              : `${languageName} files`
+          }
+        >
+          {compareMode
+            ? compareList.map((file) => (
+                <button
+                  key={file.path}
+                  className={`file-item ${file.path === comparePath ? "active" : ""}`}
+                  disabled={compareBusy}
+                  onClick={() => void selectComparedFile(file.path)}
+                  title={file.path}
+                >
+                  <FileText size={16} />
+                  <span>
+                    <strong>{fileName(file.path)}</strong>
+                    <small>
+                      {file.status} · +{file.additions} −{file.deletions}
+                    </small>
+                  </span>
+                  <ChevronRight size={13} />
+                </button>
+              ))
+            : files.map((document) => (
+                <button
+                  key={document.path}
+                  className={`file-item ${document.path === activePath ? "active" : ""}`}
+                  onClick={() => {
+                    setActivePath(document.path);
+                    setSelected(null);
+                    setNotice("");
+                  }}
+                  title={document.path}
+                >
+                  <FileText size={16} />
+                  <span>
+                    <strong>{fileName(document.path)}</strong>
+                    <small>
+                      {displayPath(document.path)
+                        .split("/")
+                        .slice(0, -1)
+                        .join("/") || `content/${activeLanguage}`}
+                    </small>
+                  </span>
+                  {drafts[document.path] !== undefined &&
+                  drafts[document.path] !== document.content ? (
+                    <span className="dirty-dot" />
+                  ) : (
+                    <ChevronRight size={13} />
+                  )}
+                </button>
+              ))}
+          {compareMode && !compareList.length && (
+            <p className="empty-message">No changed Markdown files</p>
+          )}
+          {!compareMode && !files.length && (
+            <p className="empty-message">No matching files</p>
+          )}
         </div>
         <div className="sidebar-footer">
           <span className="locale-badge">{activeLanguage.toUpperCase()}</span>
@@ -961,13 +1160,16 @@ export default function App() {
             {
               (compareMode ? compareFiles : workspace.documents).filter(
                 (document) =>
-                  compareMode || (
-                    document.path.startsWith(`content/${activeLanguage}/`) &&
-                    (!reviewPaths || reviewPaths.includes(document.path))
-                  ),
+                  compareMode ||
+                  (document.path.startsWith(`content/${activeLanguage}/`) &&
+                    (!reviewPaths || reviewPaths.includes(document.path))),
               ).length
             }{" "}
-            {compareMode ? "files changed" : pullRequest ? `changed ${languageName} files` : `${languageName} files`}
+            {compareMode
+              ? "files changed"
+              : pullRequest
+                ? `changed ${languageName} files`
+                : `${languageName} files`}
           </span>
           <span className="offline-dot" />
         </div>
@@ -1015,64 +1217,72 @@ export default function App() {
               <span className="dirty-dot" title="Unsaved translation" />
             )}
           </div>
-          {!compareMode && <div className="document-actions">
-            <button
-              title="Check page availability on kubernetes.io/docs"
-              aria-label="Check references"
-              disabled={busy || referencesBusy}
-              onClick={() => void checkReferences()}
-            >
-              {referencesBusy ? (
-                <LoaderCircle size={15} className="spin" />
-              ) : (
-                <Link2 size={15} />
+          {!compareMode && (
+            <div className="document-actions">
+              <button
+                title="Check page availability on kubernetes.io/docs"
+                aria-label="Check references"
+                disabled={busy || referencesBusy}
+                onClick={() => void checkReferences()}
+              >
+                {referencesBusy ? (
+                  <LoaderCircle size={15} className="spin" />
+                ) : (
+                  <Link2 size={15} />
+                )}
+                <span>
+                  {referencesBusy ? "Checking..." : "Check references"}
+                </span>
+              </button>
+              <button
+                title="Send the current pair to the configured LLM provider"
+                aria-label="Review with LLM"
+                disabled={busy || llmBusy || !source || !enabledTasks.length}
+                onClick={() => void runLLMReview()}
+              >
+                {llmBusy ? (
+                  <LoaderCircle size={15} className="spin" />
+                ) : (
+                  <Sparkles size={15} />
+                )}
+                <span>{llmBusy ? "Reviewing..." : "Review with LLM"}</span>
+              </button>
+              {workspace.native && (
+                <button
+                  className="icon-button"
+                  title={`Save ${languageName} translation`}
+                  aria-label={`Save ${languageName} translation`}
+                  disabled={busy}
+                  onClick={() => void saveTranslation()}
+                >
+                  <Save size={17} />
+                </button>
               )}
-              <span>{referencesBusy ? "Checking..." : "Check references"}</span>
-            </button>
-            <button
-              title="Send the current pair to the configured LLM provider"
-              aria-label="Review with LLM"
-              disabled={busy || llmBusy || !source || !enabledTasks.length}
-              onClick={() => void runLLMReview()}
-            >
-              {llmBusy ? (
-                <LoaderCircle size={15} className="spin" />
-              ) : (
-                <Sparkles size={15} />
-              )}
-              <span>{llmBusy ? "Reviewing..." : "Review with LLM"}</span>
-            </button>
-            {workspace.native && (
               <button
                 className="icon-button"
-                title={`Save ${languageName} translation`}
-                aria-label={`Save ${languageName} translation`}
+                title={`Download ${languageName} translation`}
+                aria-label={`Download ${languageName} translation`}
                 disabled={busy}
-                onClick={() => void saveTranslation()}
+                onClick={() =>
+                  void exportMarkdown(spanish.content, fileName(spanish.path))
+                }
               >
-                <Save size={17} />
+                <FileText size={16} />
               </button>
-            )}
-            <button
-              className="icon-button"
-              title={`Download ${languageName} translation`}
-              aria-label={`Download ${languageName} translation`}
-              disabled={busy}
-              onClick={() =>
-                void exportMarkdown(spanish.content, fileName(spanish.path))
-              }
-            >
-              <FileText size={16} />
-            </button>
-          </div>}
+            </div>
+          )}
         </div>
 
         {(error || languageError || pullRequestsError || notice || !source) && (
           <div
             className={`message-bar ${error || languageError || pullRequestsError || !source ? "is-error" : ""}`}
-            role={error || languageError || pullRequestsError ? "alert" : "status"}
+            role={
+              error || languageError || pullRequestsError ? "alert" : "status"
+            }
           >
-            {error || languageError || pullRequestsError ||
+            {error ||
+              languageError ||
+              pullRequestsError ||
               (!source
                 ? "English counterpart is missing from this workspace."
                 : notice)}
@@ -1095,28 +1305,55 @@ export default function App() {
           <details className="failures" aria-label="Failures">
             <summary>
               Failures ({failures.length})
-              <button className="icon-button" type="button" aria-label="Clear failures" onClick={(event) => { event.preventDefault(); setFailures([]); }}><X size={14} /></button>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Clear failures"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setFailures([]);
+                }}
+              >
+                <X size={14} />
+              </button>
             </summary>
             <ul>
-              {failures.map((item, index) => <li key={index}><strong>{item.source}</strong>: {item.message}</li>)}
+              {failures.map((item, index) => (
+                <li key={index}>
+                  <strong>{item.source}</strong>: {item.message}
+                </li>
+              ))}
             </ul>
           </details>
         )}
 
         {compareMode && (
           <div className="diff-legend" aria-label="Difference colors">
-            <span><i className="diff-color removed" /> Removed</span>
-            <span><i className="diff-color added" /> Added</span>
-            <span><i className="diff-color replaced" /> Replaced</span>
+            <span>
+              <i className="diff-color removed" /> Removed
+            </span>
+            <span>
+              <i className="diff-color added" /> Added
+            </span>
+            <span>
+              <i className="diff-color replaced" /> Replaced
+            </span>
           </div>
         )}
-        <section className={`comparison ${compareMode ? "commit-comparison" : ""}`} aria-label="Translation comparison">
+        <section
+          className={`comparison ${compareMode ? "commit-comparison" : ""}`}
+          aria-label="Translation comparison"
+        >
           <div className="editor-pane">
             <div className="pane-header">
               <div>
-                <span className="locale-badge">{compareMode ? "FROM" : "EN"}</span>
+                <span className="locale-badge">
+                  {compareMode ? "FROM" : "EN"}
+                </span>
                 <strong>{compareMode ? "From commit" : "English"}</strong>
-                <span className="pane-tag">{compareMode ? compareFromCommit?.sha.slice(0, 8) : "SOURCE"}</span>
+                <span className="pane-tag">
+                  {compareMode ? compareFromCommit?.sha.slice(0, 8) : "SOURCE"}
+                </span>
               </div>
               <span>{leftDocument.content.split("\n").length} lines</span>
             </div>
@@ -1126,10 +1363,14 @@ export default function App() {
               label={compareMode ? "From commit file" : "English source"}
               content={leftDocument.content}
               readOnly
-              findings={compareMode ? [] : review.findings.filter(
-                (finding) => finding.side === "en",
-              )}
-              reviewComments={compareMode ? noReviewComments : englishReviewComments}
+              findings={
+                compareMode
+                  ? []
+                  : review.findings.filter((finding) => finding.side === "en")
+              }
+              reviewComments={
+                compareMode ? noReviewComments : englishReviewComments
+              }
               lineDiff={commitDiff}
               diffSide="left"
               onScroll={(line) => synchronize("en", line)}
@@ -1138,10 +1379,22 @@ export default function App() {
           <div className="editor-pane spanish-pane">
             <div className="pane-header">
               <div>
-                <span className="locale-badge spanish">{compareMode ? "TO" : activeLanguage.toUpperCase()}</span>
-                <strong>{compareMode ? "To commit" : activeLanguage === "es" ? "Español" : languageName}</strong>
+                <span className="locale-badge spanish">
+                  {compareMode ? "TO" : activeLanguage.toUpperCase()}
+                </span>
+                <strong>
+                  {compareMode
+                    ? "To commit"
+                    : activeLanguage === "es"
+                      ? "Español"
+                      : languageName}
+                </strong>
                 <span className={`pane-tag ${compareMode ? "" : "editable"}`}>
-                  {compareMode ? compareToCommit?.sha.slice(0, 8) : dirty ? "MODIFIED" : "TRANSLATION"}
+                  {compareMode
+                    ? compareToCommit?.sha.slice(0, 8)
+                    : dirty
+                      ? "MODIFIED"
+                      : "TRANSLATION"}
                 </span>
               </div>
               <span>{rightDocument.content.split("\n").length} lines</span>
@@ -1149,228 +1402,243 @@ export default function App() {
             <Editor
               key={`${compareMode ? "to" : "es"}-${compareMode ? compareTo : revision}-${compareMode ? comparePath : activePath}`}
               ref={spanishEditor}
-              label={compareMode ? "To commit file" : `${languageName} translation`}
+              label={
+                compareMode ? "To commit file" : `${languageName} translation`
+              }
               content={rightDocument.content}
               readOnly={compareMode}
-              findings={compareMode ? [] : review.findings.filter(
-                (finding) => finding.side === "es",
-              )}
-              reviewComments={compareMode ? noReviewComments : spanishReviewComments}
+              findings={
+                compareMode
+                  ? []
+                  : review.findings.filter((finding) => finding.side === "es")
+              }
+              reviewComments={
+                compareMode ? noReviewComments : spanishReviewComments
+              }
               lineDiff={commitDiff}
               diffSide="right"
-              onChange={!compareMode ? (content) =>
-                setDrafts((previous) => ({
-                  ...previous,
-                  [activePath]: content,
-                }))
-              : undefined}
+              onChange={
+                !compareMode
+                  ? (content) =>
+                      setDrafts((previous) => ({
+                        ...previous,
+                        [activePath]: content,
+                      }))
+                  : undefined
+              }
               onScroll={(line) => synchronize("es", line)}
             />
           </div>
         </section>
 
-        {!compareMode && <section className="task-progress" aria-label="LLM review tasks">
-          <button
-            className="task-progress-toggle"
-            aria-expanded={tasksExpanded}
-            onClick={() => setTasksExpanded((current) => !current)}
-          >
-            <ListChecks size={14} />
-            <span>Review Tasks</span>
-            <small>
-              {activeLLMResult
-                ? `${activeLLMResult.runs.filter((run) => run.status === "succeeded" || run.status === "failed").length}/${activeLLMResult.runs.length} finished`
-                : `${enabledTasks.length} enabled`}
-            </small>
-            <ChevronDown size={14} />
-          </button>
-          {tasksExpanded && (
-            <div className="task-progress-list">
-              {enabledTasks.map((task) => {
-                const run = activeLLMResult?.runs.find(
-                  (item) => item.taskId === task.id,
-                );
-                return (
-                  <div key={task.id} className="task-progress-row">
-                    <div>
-                      <strong>{task.name}</strong>
-                      {run?.error && <p>{run.error}</p>}
+        {!compareMode && (
+          <section className="task-progress" aria-label="LLM review tasks">
+            <button
+              className="task-progress-toggle"
+              aria-expanded={tasksExpanded}
+              onClick={() => setTasksExpanded((current) => !current)}
+            >
+              <ListChecks size={14} />
+              <span>Review Tasks</span>
+              <small>
+                {activeLLMResult
+                  ? `${activeLLMResult.runs.filter((run) => run.status === "succeeded" || run.status === "failed").length}/${activeLLMResult.runs.length} finished`
+                  : `${enabledTasks.length} enabled`}
+              </small>
+              <ChevronDown size={14} />
+            </button>
+            {tasksExpanded && (
+              <div className="task-progress-list">
+                {enabledTasks.map((task) => {
+                  const run = activeLLMResult?.runs.find(
+                    (item) => item.taskId === task.id,
+                  );
+                  return (
+                    <div key={task.id} className="task-progress-row">
+                      <div>
+                        <strong>{task.name}</strong>
+                        {run?.error && <p>{run.error}</p>}
+                      </div>
+                      <span className={`task-status ${run?.status ?? "ready"}`}>
+                        {run?.status ?? "ready"}
+                        {run?.status === "succeeded"
+                          ? ` · ${run.findings.length}`
+                          : ""}
+                      </span>
+                      <button
+                        className="icon-button"
+                        title={`${run?.status === "failed" ? "Retry" : "Run"} ${task.name}`}
+                        aria-label={`Run ${task.name}`}
+                        disabled={busy || llmBusy || !source}
+                        onClick={() => void runLLMReview(task.id)}
+                      >
+                        <Play size={13} />
+                      </button>
                     </div>
-                    <span className={`task-status ${run?.status ?? "ready"}`}>
-                      {run?.status ?? "ready"}
-                      {run?.status === "succeeded"
-                        ? ` · ${run.findings.length}`
-                        : ""}
-                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {!compareMode && (
+          <section className="findings" aria-label="Review findings">
+            <div className="findings-header">
+              <div className="findings-heading">
+                <h2>Review findings</h2>
+                <span className="count-badge">{review.findings.length}</span>
+                <span className="current-file">Current file</span>
+              </div>
+              <label className="severity-filter">
+                <span>Severity</span>
+                <select
+                  aria-label="Filter by severity"
+                  value={severity}
+                  onChange={(event) => setSeverity(event.target.value)}
+                >
+                  <option value="all">All severities</option>
+                  <option value="error">Errors</option>
+                  <option value="warning">Warnings</option>
+                  <option value="info">Notes</option>
+                </select>
+              </label>
+            </div>
+            <div
+              className="finding-tabs"
+              role="tablist"
+              aria-label="Finding category"
+            >
+              {(["all", "links", "structure", "content"] as const).map(
+                (category) => {
+                  const Icon =
+                    category === "all" ? BookOpenCheck : kindIcons[category];
+                  const count =
+                    category === "all"
+                      ? review.findings.length
+                      : review.findings.filter(
+                          (finding) => finding.kind === category,
+                        ).length;
+                  return (
                     <button
-                      className="icon-button"
-                      title={`${run?.status === "failed" ? "Retry" : "Run"} ${task.name}`}
-                      aria-label={`Run ${task.name}`}
-                      disabled={busy || llmBusy || !source}
-                      onClick={() => void runLLMReview(task.id)}
+                      key={category}
+                      role="tab"
+                      aria-selected={kind === category}
+                      className={kind === category ? "selected" : ""}
+                      onClick={() => setKind(category)}
                     >
-                      <Play size={13} />
+                      <Icon size={14} />
+                      {category === "all"
+                        ? "All findings"
+                        : category === "links"
+                          ? "References"
+                          : category === "structure"
+                            ? "Structure"
+                            : "Content"}
+                      <span>{count}</span>
                     </button>
+                  );
+                },
+              )}
+            </div>
+            <div className="findings-list">
+              {filtered.map((finding) => {
+                const Icon = severityIcons[finding.severity];
+                return (
+                  <div className="finding-item" key={finding.id}>
+                    <button
+                      className={`finding-row ${selected === finding.id ? "selected" : ""}`}
+                      key={finding.id}
+                      onClick={() => selectFinding(finding)}
+                    >
+                      <Icon
+                        size={16}
+                        className={`severity-icon ${finding.severity}`}
+                      />
+                      <div>
+                        <strong>{finding.title}</strong>
+                        {finding.id.startsWith("llm-") && (
+                          <span className="llm-badge">
+                            LLM
+                            {"taskName" in finding
+                              ? ` · ${String(finding.taskName)}`
+                              : ""}
+                          </span>
+                        )}
+                        <p>{finding.detail}</p>
+                      </div>
+                      <span className="finding-location">
+                        {finding.side.toUpperCase()}
+                        <span>L{finding.line}</span>
+                      </span>
+                      <ChevronRight size={14} />
+                    </button>
+                    {"issueUrl" in finding &&
+                      typeof finding.issueUrl === "string" && (
+                        <button
+                          className="issue-draft-button"
+                          title="Create GitHub issue with prefilled reference details"
+                          aria-label={`Create GitHub issue for ${finding.side.toUpperCase()} line ${finding.line}`}
+                          onClick={() =>
+                            void createIssue(finding.issueUrl as string)
+                          }
+                        >
+                          <ExternalLink size={14} />
+                          <span>Create issue</span>
+                        </button>
+                      )}
                   </div>
                 );
               })}
-            </div>
-          )}
-        </section>}
-
-        {!compareMode && <section className="findings" aria-label="Review findings">
-          <div className="findings-header">
-            <div className="findings-heading">
-              <h2>Review findings</h2>
-              <span className="count-badge">{review.findings.length}</span>
-              <span className="current-file">Current file</span>
-            </div>
-            <label className="severity-filter">
-              <span>Severity</span>
-              <select
-                aria-label="Filter by severity"
-                value={severity}
-                onChange={(event) => setSeverity(event.target.value)}
-              >
-                <option value="all">All severities</option>
-                <option value="error">Errors</option>
-                <option value="warning">Warnings</option>
-                <option value="info">Notes</option>
-              </select>
-            </label>
-          </div>
-          <div
-            className="finding-tabs"
-            role="tablist"
-            aria-label="Finding category"
-          >
-            {(["all", "links", "structure", "content"] as const).map(
-              (category) => {
-                const Icon =
-                  category === "all" ? BookOpenCheck : kindIcons[category];
-                const count =
-                  category === "all"
-                    ? review.findings.length
-                    : review.findings.filter(
-                        (finding) => finding.kind === category,
-                      ).length;
-                return (
-                  <button
-                    key={category}
-                    role="tab"
-                    aria-selected={kind === category}
-                    className={kind === category ? "selected" : ""}
-                    onClick={() => setKind(category)}
-                  >
-                    <Icon size={14} />
-                    {category === "all"
-                      ? "All findings"
-                      : category === "links"
-                        ? "References"
-                        : category === "structure"
-                          ? "Structure"
-                          : "Content"}
-                    <span>{count}</span>
-                  </button>
-                );
-              },
-            )}
-          </div>
-          <div className="findings-list">
-            {filtered.map((finding) => {
-              const Icon = severityIcons[finding.severity];
-              return (
-                <div className="finding-item" key={finding.id}>
-                  <button
-                    className={`finding-row ${selected === finding.id ? "selected" : ""}`}
-                    key={finding.id}
-                    onClick={() => selectFinding(finding)}
-                  >
-                    <Icon
-                      size={16}
-                      className={`severity-icon ${finding.severity}`}
-                    />
-                    <div>
-                      <strong>{finding.title}</strong>
-                      {finding.id.startsWith("llm-") && (
-                        <span className="llm-badge">
-                          LLM
-                          {"taskName" in finding
-                            ? ` · ${String(finding.taskName)}`
-                            : ""}
-                        </span>
-                      )}
-                      <p>{finding.detail}</p>
-                    </div>
-                    <span className="finding-location">
-                      {finding.side.toUpperCase()}
-                      <span>L{finding.line}</span>
-                    </span>
-                    <ChevronRight size={14} />
-                  </button>
-                  {"issueUrl" in finding &&
-                    typeof finding.issueUrl === "string" && (
-                      <button
-                        className="issue-draft-button"
-                        title="Create GitHub issue with prefilled reference details"
-                        aria-label={`Create GitHub issue for ${finding.side.toUpperCase()} line ${finding.line}`}
-                        onClick={() =>
-                          void createIssue(finding.issueUrl as string)
-                        }
-                      >
-                        <ExternalLink size={14} />
-                        <span>Create issue</span>
-                      </button>
-                    )}
+              {!filtered.length && (
+                <div className="findings-empty">
+                  <Check size={22} />
+                  <strong>
+                    {review.findings.length
+                      ? "No findings match these filters"
+                      : "No findings from offline checks"}
+                  </strong>
                 </div>
-              );
-            })}
-            {!filtered.length && (
-              <div className="findings-empty">
-                <Check size={22} />
-                <strong>
-                  {review.findings.length
-                    ? "No findings match these filters"
-                    : "No findings from offline checks"}
-                </strong>
-              </div>
-            )}
-          </div>
-        </section>}
-        {!compareMode && <footer className="status-bar">
-          <div>
-            <span className="status-check">
-              <Check size={13} />
-              {activeLLMResult ? "Offline + LLM" : "Offline checks"}
-            </span>
-            <span className="status-totals">
-              <CircleAlert size={12} />
-              {errorCount}
-              <AlertTriangle size={12} />
-              {warningCount}
-              <Info size={12} />
-              {infoCount}
-            </span>
-          </div>
-          <div>
-            <span className="alignment-count">
-              {review.alignment.length} heading pairs · {review.externalLinks}{" "}
-              external references
-              {activePublishedResult
-                ? ` · ${activePublishedResult.pages} published pages checked`
-                : ""}
-            </span>
-            <label className="sync-control">
-              <ArrowLeftRight size={13} />
-              <input
-                type="checkbox"
-                checked={sync}
-                onChange={(event) => setSync(event.target.checked)}
-              />
-              Sync scroll
-            </label>
-          </div>
-        </footer>}
+              )}
+            </div>
+          </section>
+        )}
+        {!compareMode && (
+          <footer className="status-bar">
+            <div>
+              <span className="status-check">
+                <Check size={13} />
+                {activeLLMResult ? "Offline + LLM" : "Offline checks"}
+              </span>
+              <span className="status-totals">
+                <CircleAlert size={12} />
+                {errorCount}
+                <AlertTriangle size={12} />
+                {warningCount}
+                <Info size={12} />
+                {infoCount}
+              </span>
+            </div>
+            <div>
+              <span className="alignment-count">
+                {review.alignment.length} heading pairs · {review.externalLinks}{" "}
+                external references
+                {activePublishedResult
+                  ? ` · ${activePublishedResult.pages} published pages checked`
+                  : ""}
+              </span>
+              <label className="sync-control">
+                <ArrowLeftRight size={13} />
+                <input
+                  type="checkbox"
+                  checked={sync}
+                  onChange={(event) => setSync(event.target.checked)}
+                />
+                Sync scroll
+              </label>
+            </div>
+          </footer>
+        )}
       </main>
 
       {settingsOpen && (

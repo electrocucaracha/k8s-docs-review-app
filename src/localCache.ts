@@ -16,11 +16,15 @@ function openCache(): Promise<IDBDatabase | null> {
       request.onerror = () => resolve(null);
       request.onsuccess = () => {
         const cutoff = Date.now() - keepFor;
-        const cursorRequest = request.result.transaction(expiring, "readwrite").objectStore(expiring).openCursor();
+        const cursorRequest = request.result
+          .transaction(expiring, "readwrite")
+          .objectStore(expiring)
+          .openCursor();
         cursorRequest.onsuccess = () => {
           const cursor = cursorRequest.result;
           if (!cursor) return;
-          if ((cursor.value as CacheEntry<unknown>).time < cutoff) cursor.delete();
+          if ((cursor.value as CacheEntry<unknown>).time < cutoff)
+            cursor.delete();
           cursor.continue();
         };
         resolve(request.result);
@@ -31,7 +35,11 @@ function openCache(): Promise<IDBDatabase | null> {
   }));
 }
 
-async function run<T>(name: CacheStore, mode: IDBTransactionMode, action: (store: IDBObjectStore) => IDBRequest): Promise<T | undefined> {
+async function run<T>(
+  name: CacheStore,
+  mode: IDBTransactionMode,
+  action: (store: IDBObjectStore) => IDBRequest,
+): Promise<T | undefined> {
   const db = await openCache();
   if (!db) return undefined;
   return new Promise((resolve) => {
@@ -45,10 +53,19 @@ async function run<T>(name: CacheStore, mode: IDBTransactionMode, action: (store
   });
 }
 
-export function readCache<T>(name: CacheStore, key: string): Promise<CacheEntry<T> | undefined> {
+export function readCache<T>(
+  name: CacheStore,
+  key: string,
+): Promise<CacheEntry<T> | undefined> {
   return run(name, "readonly", (store) => store.get(key));
 }
 
-export async function writeCache<T>(name: CacheStore, key: string, value: T): Promise<void> {
-  await run(name, "readwrite", (store) => store.put({ time: Date.now(), value } satisfies CacheEntry<T>, key));
+export async function writeCache<T>(
+  name: CacheStore,
+  key: string,
+  value: T,
+): Promise<void> {
+  await run(name, "readwrite", (store) =>
+    store.put({ time: Date.now(), value } satisfies CacheEntry<T>, key),
+  );
 }

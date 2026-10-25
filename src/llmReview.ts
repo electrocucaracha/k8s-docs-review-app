@@ -34,16 +34,33 @@ export function validateReviewRequest(request: LLMRequest): void {
   if (request.action === "review" && (!english.trim() || !spanish.trim()))
     throw new Error("Both English and translation documents are required.");
   if ([...english].length + [...spanish].length > 100_000)
-    throw new Error("The document pair exceeds the 100,000-character LLM review limit.");
-  if (request.reviewComments !== undefined && (!Array.isArray(request.reviewComments) ||
-    request.reviewComments.length > 100 ||
-    request.reviewComments.some((comment) => !comment || typeof comment.path !== "string" ||
-      (comment.line !== null && (!Number.isSafeInteger(comment.line) || comment.line < 1)) ||
-      typeof comment.body !== "string"))) {
+    throw new Error(
+      "The document pair exceeds the 100,000-character LLM review limit.",
+    );
+  if (
+    request.reviewComments !== undefined &&
+    (!Array.isArray(request.reviewComments) ||
+      request.reviewComments.length > 100 ||
+      request.reviewComments.some(
+        (comment) =>
+          !comment ||
+          typeof comment.path !== "string" ||
+          (comment.line !== null &&
+            (!Number.isSafeInteger(comment.line) || comment.line < 1)) ||
+          typeof comment.body !== "string",
+      ))
+  ) {
     throw new Error("Invalid pull request review comments.");
   }
-  if ((request.reviewComments ?? []).reduce((total, comment) => total + comment.body.length, 0) > 20_000)
-    throw new Error("Prior review comments exceed the 20,000-character LLM context limit.");
+  if (
+    (request.reviewComments ?? []).reduce(
+      (total, comment) => total + comment.body.length,
+      0,
+    ) > 20_000
+  )
+    throw new Error(
+      "Prior review comments exceed the 20,000-character LLM context limit.",
+    );
   if (request.task) validateTasks([request.task], 1);
 }
 
@@ -60,19 +77,26 @@ export async function reviewLLM(
   const environment = options.environment ?? {};
   const provider = settings.provider;
   const prefix = provider === "openai-compatible" ? "openai" : provider;
-  const modelName = settings.model.trim().replace(new RegExp(`^${prefix}/`), "");
+  const modelName = settings.model
+    .trim()
+    .replace(new RegExp(`^${prefix}/`), "");
   const modelId = `${prefix}/${modelName}`;
   const base = settings.apiBase.replace(/\/+$/, "");
   const environmentKey = {
     ollama: undefined,
     openai: environment.OPENAI_API_KEY,
     anthropic: environment.ANTHROPIC_API_KEY,
-    gemini: environment.GEMINI_API_KEY || environment.GOOGLE_API_KEY || environment.GOOGLE_GENERATIVE_AI_API_KEY,
+    gemini:
+      environment.GEMINI_API_KEY ||
+      environment.GOOGLE_API_KEY ||
+      environment.GOOGLE_GENERATIVE_AI_API_KEY,
     "openai-compatible": environment.OPENAI_API_KEY,
   }[provider];
   const apiKey = settings.apiKey || environmentKey;
   if (!apiKey && !["ollama", "openai-compatible"].includes(provider))
-    throw new Error("Enter an API key in Settings or set the provider's environment variable.");
+    throw new Error(
+      "Enter an API key in Settings or set the provider's environment variable.",
+    );
   const signal = options.signal
     ? AbortSignal.any([options.signal, AbortSignal.timeout(150_000)])
     : AbortSignal.timeout(150_000);
@@ -107,35 +131,53 @@ export async function reviewLLM(
     });
   };
   const common = { apiKey, fetch: transport };
-  const model = provider === "anthropic"
-    ? createAnthropic({ ...common, baseURL: base ? `${base.replace(/\/v1$/, "")}/v1` : undefined })(modelName)
-    : provider === "gemini"
-      ? createGoogleGenerativeAI({ ...common, baseURL: base || undefined })(modelName)
-      : createOpenAI({
+  const model =
+    provider === "anthropic"
+      ? createAnthropic({
           ...common,
-          apiKey: apiKey || "local",
-          baseURL: provider === "ollama" ? `${base.replace(/\/v1$/, "")}/v1` : base || undefined,
-        }).chat(modelName);
-  const language = request.language === undefined || request.language === "es"
-    ? "Spanish" : `${request.language}-language`;
+          baseURL: base ? `${base.replace(/\/v1$/, "")}/v1` : undefined,
+        })(modelName)
+      : provider === "gemini"
+        ? createGoogleGenerativeAI({ ...common, baseURL: base || undefined })(
+            modelName,
+          )
+        : createOpenAI({
+            ...common,
+            apiKey: apiKey || "local",
+            baseURL:
+              provider === "ollama"
+                ? `${base.replace(/\/v1$/, "")}/v1`
+                : base || undefined,
+          }).chat(modelName);
+  const language =
+    request.language === undefined || request.language === "es"
+      ? "Spanish"
+      : `${request.language}-language`;
   const numbered = (text: string) =>
-    text.split("\n").map((line, index) => `${index + 1}: ${line}`).join("\n");
+    text
+      .split("\n")
+      .map((line, index) => `${index + 1}: ${line}`)
+      .join("\n");
   let text: string;
   try {
     const result = await generateText({
       model,
-      ...(action === "test" ? { prompt: "Reply with OK." } : {
-        system: systemPrompt.replaceAll("Spanish", language)
-          + "\nThe translation document uses the legacy 'spanish' key and 'es' finding side regardless of its language."
-          + "\nConfigured review task:\n"
-          + (task?.instructions ?? `Review translation accuracy, completeness, ${language} grammar, terminology, and technical fidelity.`)
-          + "\nReturn only the required JSON findings schema.",
-        prompt: JSON.stringify({
-          english: numbered(english),
-          spanish: numbered(spanish),
-          reviewComments: request.reviewComments ?? [],
-        }),
-      }),
+      ...(action === "test"
+        ? { prompt: "Reply with OK." }
+        : {
+            system:
+              systemPrompt.replaceAll("Spanish", language) +
+              "\nThe translation document uses the legacy 'spanish' key and 'es' finding side regardless of its language." +
+              "\nConfigured review task:\n" +
+              (task?.instructions ??
+                `Review translation accuracy, completeness, ${language} grammar, terminology, and technical fidelity.`) +
+              "\nReturn only the required JSON findings schema.",
+            prompt: JSON.stringify({
+              english: numbered(english),
+              spanish: numbered(spanish),
+              reviewComments: request.reviewComments ?? [],
+            }),
+          }),
       maxOutputTokens: action === "test" ? 8 : 4096,
       temperature: 0.2,
       maxRetries: 0,
@@ -143,28 +185,37 @@ export async function reviewLLM(
     });
     text = result.text;
   } catch (error) {
-    if (responseTooLarge)
-      throw new Error("The LLM response is too large.");
+    if (responseTooLarge) throw new Error("The LLM response is too large.");
     if (signal.aborted)
       throw new Error("The LLM request was cancelled or timed out.");
     if (APICallError.isInstance(error)) {
       if (error.statusCode === 401 || error.statusCode === 403)
-        throw new Error("The provider rejected the credentials. Check the API key in Settings.");
+        throw new Error(
+          "The provider rejected the credentials. Check the API key in Settings.",
+        );
       if (provider === "ollama" && error.statusCode === 404)
-        throw new Error("The configured Ollama model is not installed. Pull that model or select an installed model in Settings.");
+        throw new Error(
+          "The configured Ollama model is not installed. Pull that model or select an installed model in Settings.",
+        );
       if (error.statusCode === 429)
         throw new Error("The provider rate limit was reached. Wait and retry.");
     }
     // Provider errors can contain request bodies and credentials.
-    throw new Error("LLM request failed. Check the provider, model, endpoint, and credentials.");
+    throw new Error(
+      "LLM request failed. Check the provider, model, endpoint, and credentials.",
+    );
   }
   if (action === "test") return { model: modelId, findings: [] };
-  const content = text.trim().replace(/^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/, "$1");
+  const content = text
+    .trim()
+    .replace(/^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/, "$1");
   let result: unknown;
   try {
     result = JSON.parse(content);
   } catch {
-    throw new Error("The model did not return JSON. Try a model with stronger structured-output support.");
+    throw new Error(
+      "The model did not return JSON. Try a model with stronger structured-output support.",
+    );
   }
   if (!result || typeof result !== "object")
     throw new Error("The model did not return a valid findings array.");

@@ -6,7 +6,7 @@ nav_order: 1
 
 # User guide
 
-This guide covers reviewing a Kubernetes website pull request, editing
+This guide covers reviewing a Kubernetes site pull request, editing
 translations, configuring optional AI review, and checking published
 documentation references.
 
@@ -39,7 +39,7 @@ to return to the translation review.
 
 Browser mode downloads these files and their English
 counterparts at the PR's exact head revision and reuses already loaded
-revisions in the session. It indexes the repository tree for local reference
+revisions in the session. It indices the repository tree for local reference
 checks. GitHub's public API rate limits apply.
 
 Translation edits stay in memory when switching files. Download the translation
@@ -51,7 +51,7 @@ Markdown remain explicitly unchecked.
 
 Install Rust and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/).
 Windows needs Microsoft C++ Build Tools and WebView2. macOS needs Xcode
-Command Line Tools. Linux needs the platform's WebKitGTK 4.1 development
+command-line tools. Linux needs the platform's WebKitGTK 4.1 development
 libraries and related packages.
 
 Start desktop development with:
@@ -186,7 +186,7 @@ manual-review boundaries.
 ## Published references
 
 Select **Check references** to verify the current document pair's Kubernetes
-documentation references against the published website. This is deterministic
+documentation references against the published site. This is deterministic
 HTTP checking, independent of the LLM provider. Absolute
 `https://kubernetes.io/docs/...` links, localized documentation paths, and
 relative references resolving to these paths are supported. Other hosts are
@@ -229,7 +229,7 @@ tree, missing targets are informational rather than confirmed broken links.
 Heading slug generation approximates Hugo using GitHub-style slugs. Hugo
 aliases, custom permalinks, generated pages, complex shortcodes, and runtime
 templates are not fully resolved. Verify suspicious anchor findings against
-the rendered website. Only English and the selected language's Markdown contents are loaded;
+the rendered site. Only English and the selected language's Markdown contents are loaded;
 other files are indexed by path.
 
 Repository loading is limited to 50,000 indexed files, 100 MB of Markdown,

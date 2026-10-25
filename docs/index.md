@@ -31,16 +31,16 @@ to correct the example and download a draft.
 
 ## Choose your next task
 
-| Your goal | Start here |
-| --- | --- |
-| Try a complete review without provider setup | [First-review tutorial](tutorials/first-review.md) |
-| Load a real pull request and edit its translations | [User guide](user-guide.md#load-a-pull-request) |
-| Run a desktop app that can save drafts locally | [Desktop workflow](user-guide.md#run-as-a-desktop-app) |
-| Configure optional AI review | [LLM setup](user-guide.md#configure-llm-review) |
-| Look up defaults and limits | [Configuration reference](references/configuration.md) |
-| Understand what the checks can and cannot prove | [How review works](explanations/how-review-works.md) |
-| Fix a loading, runtime, or save problem | [Troubleshooting](how-to-guides/troubleshooting.md) |
-| Publish this documentation | [GitHub Pages guide](publishing.md) |
+| Your goal                                          | Start here                                             |
+| -------------------------------------------------- | ------------------------------------------------------ |
+| Try a complete review without provider setup       | [First-review tutorial](tutorials/first-review.md)     |
+| Load a real pull request and edit its translations | [User guide](user-guide.md#load-a-pull-request)        |
+| Run a desktop app that can save drafts locally     | [Desktop workflow](user-guide.md#run-as-a-desktop-app) |
+| Configure optional AI review                       | [LLM setup](user-guide.md#configure-llm-review)        |
+| Look up defaults and limits                        | [Configuration reference](references/configuration.md) |
+| Understand what the checks can and cannot prove    | [How review works](explanations/how-review-works.md)   |
+| Fix a loading, runtime, or save problem            | [Troubleshooting](how-to-guides/troubleshooting.md)    |
+| Publish this documentation                         | [GitHub Pages guide](publishing.md)                    |
 
 ## Browser or desktop?
 
@@ -48,7 +48,7 @@ Both modes compare English and translated Markdown and run offline checks.
 The browser development server downloads public pull request files
 and keeps edits in memory until you download them.
 The desktop app uses an app-managed Git checkout and can save translations there.
-Neither mode changes your own Kubernetes website working copy.
+Neither mode changes your own Kubernetes site working copy.
 
 The GitHub Pages site hosts **documentation, not the review app**.
 Large language model (LLM) review and published-reference checks need the local

@@ -383,14 +383,15 @@ export function reviewDocuments(
   documents.set(spanish.path, spanish);
   const paths = new Set(workspace.paths);
   const findings: Finding[] = [];
-  if (spanish.path.startsWith("content/es/")) findings.push(...editorialChecks(en, es));
+  if (spanish.path.startsWith("content/es/"))
+    findings.push(...editorialChecks(en, es));
   const add = (finding: Omit<Finding, "id">) =>
     findings.push({
       ...finding,
       id: `${finding.side}-${finding.kind}-${finding.line}-${findings.length}`,
-    }    );
-    const alignment = alignSections(en.headings, es.headings);
-    let externalLinks = 0;
+    });
+  const alignment = alignSections(en.headings, es.headings);
+  let externalLinks = 0;
   for (const [side, document, analysis] of [
     ["en", english, en],
     ["es", spanish, es],

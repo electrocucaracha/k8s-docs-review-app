@@ -66,11 +66,11 @@ The workflow grants Pages write access and an identity token only to the deploym
 
 Update these values in `docs/_config.yml` before publishing:
 
-| Value | Project Pages example |
-| --- | --- |
-| `url` | `https://YOUR-ACCOUNT.github.io` |
-| `baseurl` | `/YOUR-REPOSITORY` |
-| `aux_links` | Your repository URL |
+| Value       | Project Pages example            |
+| ----------- | -------------------------------- |
+| `url`       | `https://YOUR-ACCOUNT.github.io` |
+| `baseurl`   | `/YOUR-REPOSITORY`               |
+| `aux_links` | Your repository URL              |
 
 For an account site or a custom domain served at the root, set `baseurl: ""`.
 Configure a custom domain in GitHub's Pages settings and your DNS provider.

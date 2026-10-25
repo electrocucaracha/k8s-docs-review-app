@@ -48,13 +48,16 @@ class ReviewCommentWidget extends WidgetType {
   }
 
   eq(other: ReviewCommentWidget) {
-    return this.comments.length === other.comments.length &&
-      this.comments.every((comment, index) =>
-        comment.id === other.comments[index].id &&
-        comment.body === other.comments[index].body &&
-        comment.author === other.comments[index].author &&
-        comment.url === other.comments[index].url,
-      );
+    return (
+      this.comments.length === other.comments.length &&
+      this.comments.every(
+        (comment, index) =>
+          comment.id === other.comments[index].id &&
+          comment.body === other.comments[index].body &&
+          comment.author === other.comments[index].author &&
+          comment.url === other.comments[index].url,
+      )
+    );
   }
 
   toDOM() {
@@ -83,13 +86,16 @@ function commentDecorations(doc: Text, comments: PullRequestReviewComment[]) {
     if (!comment.line || comment.line < 1 || comment.line > doc.lines) continue;
     lines.set(comment.line, [...(lines.get(comment.line) ?? []), comment]);
   }
-  return Decoration.set([...lines].map(([number, group]) =>
-    Decoration.widget({
-      widget: new ReviewCommentWidget(group),
-      block: true,
-      side: 1,
-    }).range(doc.line(number).to),
-  ), true);
+  return Decoration.set(
+    [...lines].map(([number, group]) =>
+      Decoration.widget({
+        widget: new ReviewCommentWidget(group),
+        block: true,
+        side: 1,
+      }).range(doc.line(number).to),
+    ),
+    true,
+  );
 }
 
 const setReviewComments = StateEffect.define<PullRequestReviewComment[]>();
@@ -110,15 +116,24 @@ type DiffDecorations = { diff: LineDiff; side: "left" | "right" };
 const setDiffDecorations = StateEffect.define<DiffDecorations>();
 function diffDecorations(doc: Text, { diff, side }: DiffDecorations) {
   const changes = [
-    ...(side === "left" ? diff.removed.map((line) => [line, "diff-removed"] as const) : []),
-    ...(side === "right" ? diff.added.map((line) => [line, "diff-added"] as const) : []),
+    ...(side === "left"
+      ? diff.removed.map((line) => [line, "diff-removed"] as const)
+      : []),
+    ...(side === "right"
+      ? diff.added.map((line) => [line, "diff-added"] as const)
+      : []),
     ...diff.replaced.map((line) => [line, "diff-replaced"] as const),
   ];
-  return Decoration.set(changes
-    .filter(([line]) => line >= 1 && line <= doc.lines)
-    .map(([line, className]) =>
-      Decoration.line({ attributes: { class: className } }).range(doc.line(line).from),
-    ).sort((first, second) => first.from - second.from));
+  return Decoration.set(
+    changes
+      .filter(([line]) => line >= 1 && line <= doc.lines)
+      .map(([line, className]) =>
+        Decoration.line({ attributes: { class: className } }).range(
+          doc.line(line).from,
+        ),
+      )
+      .sort((first, second) => first.from - second.from),
+  );
 }
 const diffDecorationsField = StateField.define({
   create: () => Decoration.none,

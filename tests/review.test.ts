@@ -424,7 +424,9 @@ test("LLM defaults allow remote HTTP Ollama endpoints and reject unsafe endpoint
       apiBase: "http://proxy.example.invalid",
     }),
   );
-  assert.throws(() => validateSettings({ ...defaultSettings, apiKey: "a".repeat(4097) }));
+  assert.throws(() =>
+    validateSettings({ ...defaultSettings, apiKey: "a".repeat(4097) }),
+  );
 });
 
 test("LLM findings are bounded and cannot claim verified errors or invalid lines", () => {

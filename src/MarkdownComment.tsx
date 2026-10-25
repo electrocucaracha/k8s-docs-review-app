@@ -21,18 +21,22 @@ type MarkdownNode = {
 const parser = unified().use(remarkParse).use(remarkGfm);
 
 function renderNode(node: MarkdownNode, key: number): ReactNode {
-  const children = node.children?.map((child, index) => renderNode(child, index));
+  const children = node.children?.map((child, index) =>
+    renderNode(child, index),
+  );
   switch (node.type) {
     case "root":
       return <Fragment key={key}>{children}</Fragment>;
     case "text":
     case "inlineCode":
     case "code":
-      return node.type === "text" ? node.value : createElement(
-        node.type === "code" ? "pre" : "code",
-        { key, className: node.lang ? `language-${node.lang}` : undefined },
-        node.value,
-      );
+      return node.type === "text"
+        ? node.value
+        : createElement(
+            node.type === "code" ? "pre" : "code",
+            { key, className: node.lang ? `language-${node.lang}` : undefined },
+            node.value,
+          );
     case "paragraph":
       return <p key={key}>{children}</p>;
     case "heading":
@@ -40,17 +44,38 @@ function renderNode(node: MarkdownNode, key: number): ReactNode {
     case "strong":
     case "emphasis":
     case "delete":
-      return createElement(node.type === "delete" ? "del" : node.type === "strong" ? "strong" : "em", { key }, children);
+      return createElement(
+        node.type === "delete"
+          ? "del"
+          : node.type === "strong"
+            ? "strong"
+            : "em",
+        { key },
+        children,
+      );
     case "blockquote":
       return <blockquote key={key}>{children}</blockquote>;
     case "list":
-      return node.ordered
-        ? <ol key={key} start={node.start ?? undefined}>{children}</ol>
-        : <ul key={key}>{children}</ul>;
+      return node.ordered ? (
+        <ol key={key} start={node.start ?? undefined}>
+          {children}
+        </ol>
+      ) : (
+        <ul key={key}>{children}</ul>
+      );
     case "listItem":
-      return <li key={key}>{node.checked === null || node.checked === undefined
-        ? children
-        : <>{node.checked ? "☑ " : "☐ "}{children}</>}</li>;
+      return (
+        <li key={key}>
+          {node.checked === null || node.checked === undefined ? (
+            children
+          ) : (
+            <>
+              {node.checked ? "☑ " : "☐ "}
+              {children}
+            </>
+          )}
+        </li>
+      );
     case "link": {
       let url: URL;
       try {
@@ -60,14 +85,28 @@ function renderNode(node: MarkdownNode, key: number): ReactNode {
       }
       if (!["https:", "http:", "mailto:"].includes(url.protocol))
         return <span key={key}>{children}</span>;
-      return <a key={key} href={url.href} title={node.title ?? undefined} target="_blank" rel="noreferrer">{children}</a>;
+      return (
+        <a
+          key={key}
+          href={url.href}
+          title={node.title ?? undefined}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {children}
+        </a>
+      );
     }
     case "image":
       return <span key={key}>{node.alt ?? ""}</span>;
     case "thematicBreak":
       return <hr key={key} />;
     case "table":
-      return <table key={key}><tbody>{children}</tbody></table>;
+      return (
+        <table key={key}>
+          <tbody>{children}</tbody>
+        </table>
+      );
     case "tableHeader":
       return <tr key={key}>{children}</tr>;
     case "tableRow":
@@ -80,6 +119,9 @@ function renderNode(node: MarkdownNode, key: number): ReactNode {
 }
 
 export function MarkdownComment({ markdown }: { markdown: string }) {
-  const tree = useMemo(() => parser.parse(markdown) as unknown as MarkdownNode, [markdown]);
+  const tree = useMemo(
+    () => parser.parse(markdown) as unknown as MarkdownNode,
+    [markdown],
+  );
   return <div className="pr-comment-markdown">{renderNode(tree, 0)}</div>;
 }

@@ -106,7 +106,7 @@ The app reviews complete changed documents,
 not only changed lines or previously unreviewed discussion.
 It does not verify contribution agreements, required checks, authorized approvals,
 preview freshness, or every commit.
-It also does not execute Kubernetes commands or render the website.
+It also does not execute Kubernetes commands or render the site.
 
 The [Spanish review history coverage](../spanish-review-coverage.md)
 records the evidence behind Spanish-specific checks and prompts,

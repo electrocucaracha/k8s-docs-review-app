@@ -86,7 +86,7 @@ Do not delete the checkout to resolve a conflict before preserving your draft.
 Checkouts with local edits retain their cached pull request revision rather than refreshing.
 Compare the review revision with the current pull request head before posting findings.
 
-## A link finding disagrees with the rendered website
+## A link finding disagrees with the rendered site
 
 Check the actual Hugo or Netlify preview at the pull request head revision.
 Aliases, generated pages, complex shortcodes, and custom permalinks

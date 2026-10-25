@@ -5,13 +5,32 @@ import { defaultTasks } from "../src/reviewTasks";
 import { defaultSettings } from "../src/llm";
 
 test.beforeEach(async ({ page }) => {
-  await page.route(/https:\/\/api\.github\.com\/repos\/kubernetes\/website\/(?:labels\?|issues\?|contents\/content$)/, async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/contents/content")) return route.fulfill({ json: ["en", "es", "fr", "zh-cn", "pt-br"].map((name) => ({ name, type: "dir" })) });
-    return route.fulfill({ json: url.pathname.endsWith("/labels")
-      ? [{ name: "language/es" }, { name: "language/fr" }, { name: "language/zh" }, { name: "language/pt" }, { name: "language/ar" }, { name: "language/en" }, { name: "kind/documentation" }]
-      : [{ number: 42, title: "Update translation", pull_request: {} }] });
-  });
+  await page.route(
+    /https:\/\/api\.github\.com\/repos\/kubernetes\/website\/(?:labels\?|issues\?|contents\/content$)/,
+    async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/contents/content"))
+        return route.fulfill({
+          json: ["en", "es", "fr", "zh-cn", "pt-br"].map((name) => ({
+            name,
+            type: "dir",
+          })),
+        });
+      return route.fulfill({
+        json: url.pathname.endsWith("/labels")
+          ? [
+              { name: "language/es" },
+              { name: "language/fr" },
+              { name: "language/zh" },
+              { name: "language/pt" },
+              { name: "language/ar" },
+              { name: "language/en" },
+              { name: "kind/documentation" },
+            ]
+          : [{ number: 42, title: "Update translation", pull_request: {} }],
+      });
+    },
+  );
   await page.goto("/");
 });
 
@@ -349,7 +368,9 @@ test("adds labelled LLM findings and removes them after document edits", async (
   await expect(page.locator(".llm-badge")).toHaveCount(0);
 });
 
-test("restores stored LLM reviews after reload until the user reviews again", async ({ page }) => {
+test("restores stored LLM reviews after reload until the user reviews again", async ({
+  page,
+}) => {
   let calls = 0;
   await page.route("**/api/llm/review", async (route) => {
     calls++;
@@ -357,27 +378,51 @@ test("restores stored LLM reviews after reload until the user reviews again", as
     await route.fulfill({
       json: {
         model: "ollama/llama3.2",
-        findings: task.id === "accuracy"
-          ? [{ kind: "content", severity: "warning", side: "es", line: 8, title: "Translate the introduction", detail: "Still in English." }]
-          : [],
+        findings:
+          task.id === "accuracy"
+            ? [
+                {
+                  kind: "content",
+                  severity: "warning",
+                  side: "es",
+                  line: 8,
+                  title: "Translate the introduction",
+                  detail: "Still in English.",
+                },
+              ]
+            : [],
       },
     });
   });
-  await page.getByRole("button", { name: "Review with LLM", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Review with LLM", exact: true })
+    .click();
   await expect(page.getByRole("status")).toContainText("LLM tasks complete");
   await expect(page.locator(".llm-badge")).toHaveCount(1);
   const reviewed = calls;
-  await expect.poll(() => page.evaluate(() => new Promise<number>((resolve) => {
-    const request = indexedDB.open("k8s-docs-review-cache");
-    request.onsuccess = () => {
-      const count = request.result.transaction("llm-reviews").objectStore("llm-reviews").count();
-      count.onsuccess = () => resolve(count.result);
-    };
-  }))).toBe(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise<number>((resolve) => {
+            const request = indexedDB.open("k8s-docs-review-cache");
+            request.onsuccess = () => {
+              const count = request.result
+                .transaction("llm-reviews")
+                .objectStore("llm-reviews")
+                .count();
+              count.onsuccess = () => resolve(count.result);
+            };
+          }),
+      ),
+    )
+    .toBe(1);
   await page.reload();
   await expect(page.locator(".llm-badge")).toHaveCount(1);
   expect(calls).toBe(reviewed);
-  await page.getByRole("button", { name: "Review with LLM", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Review with LLM", exact: true })
+    .click();
   await expect(page.getByRole("status")).toContainText("LLM tasks complete");
   expect(calls).toBe(reviewed * 2);
 });
@@ -397,54 +442,106 @@ test("local LLM bridge rejects cross-origin requests and invalid settings", asyn
   expect(invalidSettings.status()).toBe(400);
 });
 
-test("desktop SDK runs in the browser webview using native HTTP instead of Node", async ({ page }) => {
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.evaluate(() => {
-      Object.defineProperty(globalThis, "isTauri", { configurable: true, value: true });
-      Object.defineProperty(globalThis, "__TAURI_INTERNALS__", { configurable: true, value: {
-        invoke: async (command: string, args: { url: string; provider: string; body: string }) => {
+test("desktop SDK runs in the browser webview using native HTTP instead of Node", async ({
+  page,
+}) => {
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.evaluate(() => {
+    Object.defineProperty(globalThis, "isTauri", {
+      configurable: true,
+      value: true,
+    });
+    Object.defineProperty(globalThis, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {
+        invoke: async (
+          command: string,
+          args: { url: string; provider: string; body: string },
+        ) => {
           if (command === "llm_environment") return {};
-          if (command !== "llm_fetch" || args.provider !== "ollama"
-            || args.url !== "http://127.0.0.1:11434/v1/chat/completions")
+          if (
+            command !== "llm_fetch" ||
+            args.provider !== "ollama" ||
+            args.url !== "http://127.0.0.1:11434/v1/chat/completions"
+          )
             throw new Error("Unexpected native SDK request");
           if (!args.body.includes("Reply with OK."))
             throw new Error("Connection test sent unexpected content");
-          return { status: 200, headers: { "content-type": "application/json" }, body: JSON.stringify({
-            id: "chat_test", object: "chat.completion", created: 1, model: "llama3.2",
-            choices: [{ index: 0, message: { role: "assistant", content: "OK" }, finish_reason: "stop" }],
-          }) };
+          return {
+            status: 200,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              id: "chat_test",
+              object: "chat.completion",
+              created: 1,
+              model: "llama3.2",
+              choices: [
+                {
+                  index: 0,
+                  message: { role: "assistant", content: "OK" },
+                  finish_reason: "stop",
+                },
+              ],
+            }),
+          };
         },
-      } });
+      },
     });
-    await page.getByRole("button", { name: "Test connection" }).click();
-    await expect(page.getByRole("dialog")).toContainText("ollama/qwen3.8:27b-q4_K_M");
+  });
+  await page.getByRole("button", { name: "Test connection" }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "ollama/qwen3.8:27b-q4_K_M",
+  );
 });
 
-test("local LLM bridge reviews through the real SDK without Python", async ({ request }) => {
+test("local LLM bridge reviews through the real SDK without Python", async ({
+  request,
+}) => {
   const fixture = createServer(async (incoming, response) => {
     expect(incoming.url).toBe("/v1/chat/completions");
     let body = "";
     for await (const chunk of incoming) body += chunk;
     expect(JSON.parse(body).messages[1].content).toContain("1: Traducción");
     response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify({
-      id: "chat_test", object: "chat.completion", created: 1, model: "llama3.2",
-      choices: [{ index: 0, message: { role: "assistant", content: '{"findings":[]}' }, finish_reason: "stop" }],
-    }));
+    response.end(
+      JSON.stringify({
+        id: "chat_test",
+        object: "chat.completion",
+        created: 1,
+        model: "llama3.2",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: '{"findings":[]}' },
+            finish_reason: "stop",
+          },
+        ],
+      }),
+    );
   });
   fixture.listen(0, "127.0.0.1");
   await once(fixture, "listening");
   const address = fixture.address();
-  if (!address || typeof address === "string") throw new Error("Missing HTTP fixture port");
+  if (!address || typeof address === "string")
+    throw new Error("Missing HTTP fixture port");
   try {
     const result = await request.post("/api/llm/review", {
       headers: { Origin: "http://127.0.0.1:5173" },
-      data: { action: "review", english: "Source", spanish: "Traducción", settings: {
-        ...defaultSettings, apiBase: `http://127.0.0.1:${address.port}`,
-      } },
+      data: {
+        action: "review",
+        english: "Source",
+        spanish: "Traducción",
+        settings: {
+          ...defaultSettings,
+          apiBase: `http://127.0.0.1:${address.port}`,
+        },
+      },
     });
     expect(result.status()).toBe(200);
-    expect(await result.json()).toEqual({ model: "ollama/qwen3.8:27b-q4_K_M", findings: [] });
+    expect(await result.json()).toEqual({
+      model: "ollama/qwen3.8:27b-q4_K_M",
+      findings: [],
+    });
     const oversized = await request.post("/api/llm/review", {
       headers: { Origin: "http://127.0.0.1:5173" },
       data: { padding: "a".repeat(1024 * 1024) },
@@ -452,7 +549,9 @@ test("local LLM bridge reviews through the real SDK without Python", async ({ re
     expect(oversized.status()).toBe(413);
   } finally {
     fixture.closeAllConnections();
-    await new Promise<void>((resolve, reject) => fixture.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) =>
+      fixture.close((error) => (error ? reject(error) : resolve())),
+    );
   }
 });
 
@@ -514,18 +613,28 @@ test("review export is removed while Spanish translation download remains availa
   expect(content).not.toContain("# Kubernetes Translation Review");
 });
 
-test("loads a PR and lists only changed Spanish files", async ({ page, context }) => {
+test("loads a PR and lists only changed Spanish files", async ({
+  page,
+  context,
+}) => {
   let sha = "a".repeat(40);
   const initialSha = sha;
   const requests: string[] = [];
   await expect(page.locator(".brand span")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Open PR on GitHub" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Open PR on GitHub" }),
+  ).toBeDisabled();
   await page.route(
     "https://api.github.com/repos/kubernetes/website/**",
     async (route) => {
       const url = new URL(route.request().url());
       requests.push(url.pathname);
-      if (url.pathname.endsWith("/labels") || url.pathname.endsWith("/issues") || url.pathname.endsWith("/contents/content")) return route.fallback();
+      if (
+        url.pathname.endsWith("/labels") ||
+        url.pathname.endsWith("/issues") ||
+        url.pathname.endsWith("/contents/content")
+      )
+        return route.fallback();
       if (url.pathname.endsWith("/pulls/42"))
         return route.fulfill({
           json: { title: "Update Spanish docs", head: { sha } },
@@ -540,32 +649,42 @@ test("loads a PR and lists only changed Spanish files", async ({ page, context }
         });
       if (url.pathname.endsWith("/pulls/42/commits"))
         return route.fulfill({
-          json: [{
-            sha,
-            commit: { message: "Latest update", author: { name: "Contributor", date: "2026-01-01T00:00:00Z" } },
-            author: { login: "contributor" },
-          }],
+          json: [
+            {
+              sha,
+              commit: {
+                message: "Latest update",
+                author: { name: "Contributor", date: "2026-01-01T00:00:00Z" },
+              },
+              author: { login: "contributor" },
+            },
+          ],
         });
       if (url.pathname.endsWith("/pulls/42/comments"))
         return route.fulfill({
-          json: [{
-            id: 7,
-            path: "content/es/docs/page.md",
-            line: 3,
-            original_line: 3,
-            body: "Please preserve the reviewer-approved heading.",
-            user: { login: "reviewer" },
-          }],
+          json: [
+            {
+              id: 7,
+              path: "content/es/docs/page.md",
+              line: 3,
+              original_line: 3,
+              body: "Please preserve the reviewer-approved heading.",
+              user: { login: "reviewer" },
+            },
+          ],
         });
       if (url.pathname.endsWith("/issues/42/comments"))
         return route.fulfill({
-          json: [{
-            id: 18,
-            body: "Thanks **for** updating the `wording`.\n\n- First item\n- Second item",
-            user: { login: "maintainer" },
-            created_at: "2026-01-02T00:00:00Z",
-            html_url: "https://github.com/kubernetes/website/pull/42#issuecomment-18",
-          }],
+          json: [
+            {
+              id: 18,
+              body: "Thanks **for** updating the `wording`.\n\n- First item\n- Second item",
+              user: { login: "maintainer" },
+              created_at: "2026-01-02T00:00:00Z",
+              html_url:
+                "https://github.com/kubernetes/website/pull/42#issuecomment-18",
+            },
+          ],
         });
       if (url.pathname.includes("/git/trees/"))
         return route.fulfill({
@@ -587,18 +706,29 @@ test("loads a PR and lists only changed Spanish files", async ({ page, context }
       });
     },
   );
-  await expect(page.getByRole("combobox", { name: "Language", exact: true })).toHaveValue("es");
-  await page.getByRole("combobox", { name: "Pull request", exact: true }).selectOption("42");
+  await expect(
+    page.getByRole("combobox", { name: "Language", exact: true }),
+  ).toHaveValue("es");
+  await page
+    .getByRole("combobox", { name: "Pull request", exact: true })
+    .selectOption("42");
   await expect(page.locator(".workspace-name")).toContainText("PR #42");
   await expect(page.locator(".file-item")).toHaveCount(1);
   await expect(page.locator(".pr-context")).toContainText(
     "Update Spanish docs",
   );
-  await expect(page.locator(".pr-context")).toContainText(`Head commit: ${sha}`);
-  await expect(page.getByRole("link", { name: sha, exact: true })).toHaveAttribute(
-    "href", `https://github.com/kubernetes/website/commit/${sha}`,
+  await expect(page.locator(".pr-context")).toContainText(
+    `Head commit: ${sha}`,
   );
-  await expect(page.getByRole("link", { name: "Changes since" })).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: sha, exact: true }),
+  ).toHaveAttribute(
+    "href",
+    `https://github.com/kubernetes/website/commit/${sha}`,
+  );
+  await expect(page.getByRole("link", { name: "Changes since" })).toHaveCount(
+    0,
+  );
   await page.locator(".pr-review-comments > summary").click();
   await expect(page.locator(".pr-review-comment-list")).toContainText(
     "Thanks for updating the wording.",
@@ -612,23 +742,32 @@ test("loads a PR and lists only changed Spanish files", async ({ page, context }
   await expect(prComment.locator("strong")).toHaveText("for");
   await expect(prComment.locator("code")).toHaveText("wording");
   await expect(prComment.locator("li")).toHaveCount(2);
-  await expect(page.locator(".spanish-pane .review-comment-thread")).toContainText(
-    "Please preserve the reviewer-approved heading.",
-  );
+  await expect(
+    page.locator(".spanish-pane .review-comment-thread"),
+  ).toContainText("Please preserve the reviewer-approved heading.");
   let llmComments: unknown;
   await page.route("/api/llm/review", async (route) => {
     llmComments = route.request().postDataJSON().reviewComments;
     await route.fulfill({ json: { model: "ollama/test", findings: [] } });
   });
-  await page.getByRole("button", { name: "Review with LLM", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Review with LLM", exact: true })
+    .click();
   await expect(page.getByRole("status")).toContainText("LLM tasks complete");
-  expect(llmComments).toEqual([{
-    path: "content/es/docs/page.md",
-    line: 3,
-    body: "Please preserve the reviewer-approved heading.",
-  }]);
-  await context.route("https://github.com/kubernetes/website/pull/42", (route) =>
-    route.fulfill({ contentType: "text/html", body: "<h1>Pull request 42</h1>" }),
+  expect(llmComments).toEqual([
+    {
+      path: "content/es/docs/page.md",
+      line: 3,
+      body: "Please preserve the reviewer-approved heading.",
+    },
+  ]);
+  await context.route(
+    "https://github.com/kubernetes/website/pull/42",
+    (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: "<h1>Pull request 42</h1>",
+      }),
   );
   const pendingPR = context.waitForEvent("page");
   await page.getByRole("button", { name: "Open PR on GitHub" }).click();
@@ -640,83 +779,171 @@ test("loads a PR and lists only changed Spanish files", async ({ page, context }
   await expect(page.locator(".finding-row")).toHaveCount(1);
   await expect(page.locator(".finding-row")).toContainText("/docs/missing/");
   await page.getByRole("button", { name: "Refresh pull requests" }).click();
-  await page.getByRole("combobox", { name: "Pull request", exact: true }).selectOption("42");
-  await expect(page.getByRole("combobox", { name: "Pull request", exact: true })).toBeEnabled();
-  expect(requests.filter((path) => path.includes("/contents/content/")).length).toBe(2);
+  await page
+    .getByRole("combobox", { name: "Pull request", exact: true })
+    .selectOption("42");
+  await expect(
+    page.getByRole("combobox", { name: "Pull request", exact: true }),
+  ).toBeEnabled();
+  expect(
+    requests.filter((path) => path.includes("/contents/content/")).length,
+  ).toBe(2);
   expect(requests.filter((path) => path.includes("/git/trees/")).length).toBe(
     1,
   );
-  await expect(page.getByRole("link", { name: "Changes since" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Changes since" })).toHaveCount(
+    0,
+  );
 
   sha = "b".repeat(40);
   await page.getByRole("button", { name: "Refresh pull requests" }).click();
-  await page.getByRole("combobox", { name: "Pull request", exact: true }).selectOption("42");
-  await expect(page.getByRole("link", { name: sha, exact: true })).toHaveAttribute(
-    "href", `https://github.com/kubernetes/website/commit/${sha}`,
+  await page
+    .getByRole("combobox", { name: "Pull request", exact: true })
+    .selectOption("42");
+  await expect(
+    page.getByRole("link", { name: sha, exact: true }),
+  ).toHaveAttribute(
+    "href",
+    `https://github.com/kubernetes/website/commit/${sha}`,
   );
-  await expect(page.getByRole("link", { name: "Changes since aaaaaaaa" })).toHaveAttribute(
-    "href", `https://github.com/kubernetes/website/compare/${initialSha}..${sha}`,
+  await expect(
+    page.getByRole("link", { name: "Changes since aaaaaaaa" }),
+  ).toHaveAttribute(
+    "href",
+    `https://github.com/kubernetes/website/compare/${initialSha}..${sha}`,
   );
-  expect(requests.filter((path) => path.includes("/contents/content/")).length).toBe(4);
-  expect(requests.filter((path) => path.includes("/git/trees/")).length).toBe(2);
+  expect(
+    requests.filter((path) => path.includes("/contents/content/")).length,
+  ).toBe(4);
+  expect(requests.filter((path) => path.includes("/git/trees/")).length).toBe(
+    2,
+  );
 });
 
-test("compares Markdown files between selected PR commits", async ({ page }) => {
+test("compares Markdown files between selected PR commits", async ({
+  page,
+}) => {
   const from = "1".repeat(40);
   const middle = "3".repeat(40);
   const to = "2".repeat(40);
-  await page.route("https://api.github.com/repos/kubernetes/website/**", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/labels") || url.pathname.endsWith("/issues") || url.pathname.endsWith("/contents/content"))
+  await page.route(
+    "https://api.github.com/repos/kubernetes/website/**",
+    async (route) => {
+      const url = new URL(route.request().url());
+      if (
+        url.pathname.endsWith("/labels") ||
+        url.pathname.endsWith("/issues") ||
+        url.pathname.endsWith("/contents/content")
+      )
+        return route.fallback();
+      if (url.pathname.endsWith("/pulls/42"))
+        return route.fulfill({
+          json: { title: "Multiple commit update", head: { sha: to } },
+        });
+      if (url.pathname.endsWith("/pulls/42/files"))
+        return route.fulfill({
+          json: [{ filename: "content/es/docs/page.md", status: "modified" }],
+        });
+      if (url.pathname.endsWith("/pulls/42/comments"))
+        return route.fulfill({ json: [] });
+      if (url.pathname.endsWith("/issues/42/comments"))
+        return route.fulfill({ json: [] });
+      if (url.pathname.endsWith("/pulls/42/commits"))
+        return route.fulfill({
+          json: [
+            {
+              sha: from,
+              commit: {
+                message: "First revision",
+                author: { name: "Contributor", date: "2026-01-01T00:00:00Z" },
+              },
+              author: { login: "contributor" },
+            },
+            {
+              sha: middle,
+              commit: {
+                message: "Suggestion applied",
+                author: { name: "Contributor", date: "2026-01-02T00:00:00Z" },
+              },
+              author: { login: "contributor" },
+            },
+            {
+              sha: to,
+              commit: {
+                message: "Second revision",
+                author: { name: "Contributor", date: "2026-01-03T00:00:00Z" },
+              },
+              author: { login: "contributor" },
+            },
+          ],
+        });
+      if (url.pathname.includes("/git/trees/"))
+        return route.fulfill({
+          json: {
+            truncated: false,
+            tree: ["content/en/docs/page.md", "content/es/docs/page.md"].map(
+              (path) => ({ path, type: "blob" }),
+            ),
+          },
+        });
+      if (url.pathname.includes("/compare/")) {
+        expect(url.pathname).toContain(`/compare/${middle}...${to}`);
+        return route.fulfill({
+          json: {
+            files: [
+              {
+                filename: "content/es/docs/page.md",
+                status: "modified",
+                additions: 2,
+                deletions: 1,
+              },
+            ],
+          },
+        });
+      }
+      if (url.pathname.includes("/contents/")) {
+        const ref = url.searchParams.get("ref");
+        return route.fulfill({
+          body: url.pathname.includes("/content/es/")
+            ? ref === middle
+              ? "# Suggestion applied\n"
+              : "# Newer translation\n"
+            : "# English source\n",
+        });
+      }
       return route.fallback();
-    if (url.pathname.endsWith("/pulls/42"))
-      return route.fulfill({ json: { title: "Multiple commit update", head: { sha: to } } });
-    if (url.pathname.endsWith("/pulls/42/files"))
-      return route.fulfill({ json: [{ filename: "content/es/docs/page.md", status: "modified" }] });
-    if (url.pathname.endsWith("/pulls/42/comments"))
-      return route.fulfill({ json: [] });
-    if (url.pathname.endsWith("/issues/42/comments"))
-      return route.fulfill({ json: [] });
-    if (url.pathname.endsWith("/pulls/42/commits"))
-      return route.fulfill({ json: [
-        { sha: from, commit: { message: "First revision", author: { name: "Contributor", date: "2026-01-01T00:00:00Z" } }, author: { login: "contributor" } },
-        { sha: middle, commit: { message: "Suggestion applied", author: { name: "Contributor", date: "2026-01-02T00:00:00Z" } }, author: { login: "contributor" } },
-        { sha: to, commit: { message: "Second revision", author: { name: "Contributor", date: "2026-01-03T00:00:00Z" } }, author: { login: "contributor" } },
-      ] });
-    if (url.pathname.includes("/git/trees/"))
-      return route.fulfill({ json: { truncated: false, tree: [
-        "content/en/docs/page.md", "content/es/docs/page.md",
-      ].map((path) => ({ path, type: "blob" })) } });
-    if (url.pathname.includes("/compare/")) {
-      expect(url.pathname).toContain(`/compare/${middle}...${to}`);
-      return route.fulfill({ json: { files: [
-        { filename: "content/es/docs/page.md", status: "modified", additions: 2, deletions: 1 },
-      ] } });
-    }
-    if (url.pathname.includes("/contents/")) {
-      const ref = url.searchParams.get("ref");
-      return route.fulfill({
-        body: url.pathname.includes("/content/es/")
-          ? ref === middle ? "# Suggestion applied\n" : "# Newer translation\n"
-          : "# English source\n",
-      });
-    }
-    return route.fallback();
-  });
-  await page.getByRole("combobox", { name: "Pull request", exact: true }).selectOption("42");
-  await expect(page.getByRole("combobox", { name: "Pull request", exact: true })).toBeEnabled();
+    },
+  );
+  await page
+    .getByRole("combobox", { name: "Pull request", exact: true })
+    .selectOption("42");
+  await expect(
+    page.getByRole("combobox", { name: "Pull request", exact: true }),
+  ).toBeEnabled();
   await page.locator(".pr-commit-comparison summary").click();
   await expect(page.getByLabel("Compare from commit")).toHaveValue(from);
   await expect(page.getByLabel("Compare to commit")).toHaveValue(to);
   await page.getByLabel("Compare from commit").selectOption(middle);
-  await page.getByRole("button", { name: "Compare commits", exact: true }).click();
-  await expect(page.getByLabel("Files changed between commits")).toContainText("page.md");
+  await page
+    .getByRole("button", { name: "Compare commits", exact: true })
+    .click();
+  await expect(page.getByLabel("Files changed between commits")).toContainText(
+    "page.md",
+  );
   await expect(page.locator(".comparison")).toContainText("Suggestion applied");
   await expect(page.locator(".comparison")).toContainText("Newer translation");
-  await expect(page.locator(".commit-comparison .spanish-pane .cm-line.diff-replaced")).toHaveCount(1);
-  await expect(page.locator(".commit-comparison .editor-pane:first-child .cm-line.diff-replaced")).toHaveCount(1);
+  await expect(
+    page.locator(".commit-comparison .spanish-pane .cm-line.diff-replaced"),
+  ).toHaveCount(1);
+  await expect(
+    page.locator(
+      ".commit-comparison .editor-pane:first-child .cm-line.diff-replaced",
+    ),
+  ).toHaveCount(1);
   await expect(page.locator(".findings")).toHaveCount(0);
-  await page.getByRole("button", { name: "Back to PR review", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Back to PR review", exact: true })
+    .click();
   await expect(page.locator(".findings")).toBeVisible();
 });
 
@@ -727,77 +954,164 @@ test("preserves the current workspace on GitHub errors and can refresh the PR li
   await expect(
     page.getByRole("button", { name: "Open repository" }),
   ).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "Pull request", exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("textbox", { name: "Pull request", exact: true }),
+  ).toHaveCount(0);
   await page.route(
     "https://api.github.com/repos/kubernetes/website/**",
     (route) =>
       route.fulfill({ status: 429, json: { message: "API rate limit" } }),
   );
-  await page.getByRole("combobox", { name: "Pull request", exact: true }).selectOption("42");
+  await page
+    .getByRole("combobox", { name: "Pull request", exact: true })
+    .selectOption("42");
   await expect(page.getByRole("alert")).toContainText("public API limit");
   await expect(page.locator(".workspace-name")).toContainText(
     "Example workspace",
   );
   await page.getByRole("button", { name: "Refresh pull requests" }).click();
-  await expect(page.getByRole("combobox", { name: "Pull request", exact: true })).toBeEnabled();
-  await expect(page.getByRole("combobox", { name: "Pull request", exact: true })).toContainText("Update translation");
+  await expect(
+    page.getByRole("combobox", { name: "Pull request", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("combobox", { name: "Pull request", exact: true }),
+  ).toContainText("Update translation");
 });
 
-test("reports GitHub rate limits when no cached copy exists", async ({ page }) => {
-  await page.route("https://api.github.com/repos/kubernetes/website/issues?**", (route) =>
-    new URL(route.request().url()).searchParams.get("labels") === "language/fr"
-      ? route.fulfill({ status: 429, json: { message: "API rate limit" } })
-      : route.fallback(),
+test("reports GitHub rate limits when no cached copy exists", async ({
+  page,
+}) => {
+  await page.route(
+    "https://api.github.com/repos/kubernetes/website/issues?**",
+    (route) =>
+      new URL(route.request().url()).searchParams.get("labels") ===
+      "language/fr"
+        ? route.fulfill({ status: 429, json: { message: "API rate limit" } })
+        : route.fallback(),
   );
-  await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("fr");
-  await expect(page.getByRole("combobox", { name: "Pull request", exact: true })).toBeDisabled();
-  await expect(page.getByRole("combobox", { name: "Pull request", exact: true })).toContainText("Could not load pull requests");
+  await page
+    .getByRole("combobox", { name: "Language", exact: true })
+    .selectOption("fr");
+  await expect(
+    page.getByRole("combobox", { name: "Pull request", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("combobox", { name: "Pull request", exact: true }),
+  ).toContainText("Could not load pull requests");
 });
 
-test("language selection paginates labelled PRs and loads their translated files", async ({ page }) => {
+test("language selection paginates labelled PRs and loads their translated files", async ({
+  page,
+}) => {
   const sha = "b".repeat(40);
   const pages: string[] = [];
-  await page.route("https://api.github.com/repos/kubernetes/website/**", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/labels") || url.pathname.endsWith("/contents/content")) return route.fallback();
-    if (url.pathname.endsWith("/issues")) {
-      if (url.searchParams.get("labels") !== "language/fr") return route.fallback();
-      expect(url.searchParams.get("state")).toBe("open");
-      expect(url.searchParams.get("labels")).toBe("language/fr");
-      pages.push(url.searchParams.get("page")!);
-      return route.fulfill({ json: url.searchParams.get("page") === "1"
-        ? Array.from({ length: 100 }, (_, index) => ({ number: index + 100, title: `French update ${index}`, pull_request: {} }))
-        : [{ number: 43, title: "French documentation", pull_request: {} }, { number: 999, title: "Not a pull request" }] });
-    }
-    if (url.pathname.endsWith("/pulls/43")) return route.fulfill({ json: { title: "French documentation", head: { sha } } });
-    if (url.pathname.endsWith("/pulls/43/comments")) return route.fulfill({ json: [] });
-    if (url.pathname.endsWith("/issues/43/comments")) return route.fulfill({ json: [] });
-    if (url.pathname.endsWith("/pulls/43/commits")) return route.fulfill({ json: [
-      { sha, commit: { message: "French update", author: { name: "Contributor", date: "2026-01-01T00:00:00Z" } }, author: { login: "contributor" } },
-    ] });
-    if (url.pathname.endsWith("/pulls/43/files")) return route.fulfill({ json: [
-      { filename: "content/fr/docs/page.md", status: "modified" },
-      { filename: "content/fr/docs/second.md", status: "added" },
-      { filename: "content/fr/docs/deleted.md", status: "removed" },
-      { filename: "content/es/docs/page.md", status: "modified" },
-    ] });
-    if (url.pathname.includes("/git/trees/")) return route.fulfill({ json: { truncated: false, tree: [
-      "content/fr/docs/page.md", "content/fr/docs/second.md", "content/en/docs/page.md", "content/en/docs/second.md",
-    ].map((path) => ({ path, type: "blob" })) } });
-    expect(url.searchParams.get("ref")).toBe(sha);
-    return route.fulfill({ body: url.pathname.includes("/content/fr/") ? "# Bonjour\n\n[Guide](./second/)" : "# Source" });
+  await page.route(
+    "https://api.github.com/repos/kubernetes/website/**",
+    async (route) => {
+      const url = new URL(route.request().url());
+      if (
+        url.pathname.endsWith("/labels") ||
+        url.pathname.endsWith("/contents/content")
+      )
+        return route.fallback();
+      if (url.pathname.endsWith("/issues")) {
+        if (url.searchParams.get("labels") !== "language/fr")
+          return route.fallback();
+        expect(url.searchParams.get("state")).toBe("open");
+        expect(url.searchParams.get("labels")).toBe("language/fr");
+        pages.push(url.searchParams.get("page")!);
+        return route.fulfill({
+          json:
+            url.searchParams.get("page") === "1"
+              ? Array.from({ length: 100 }, (_, index) => ({
+                  number: index + 100,
+                  title: `French update ${index}`,
+                  pull_request: {},
+                }))
+              : [
+                  {
+                    number: 43,
+                    title: "French documentation",
+                    pull_request: {},
+                  },
+                  { number: 999, title: "Not a pull request" },
+                ],
+        });
+      }
+      if (url.pathname.endsWith("/pulls/43"))
+        return route.fulfill({
+          json: { title: "French documentation", head: { sha } },
+        });
+      if (url.pathname.endsWith("/pulls/43/comments"))
+        return route.fulfill({ json: [] });
+      if (url.pathname.endsWith("/issues/43/comments"))
+        return route.fulfill({ json: [] });
+      if (url.pathname.endsWith("/pulls/43/commits"))
+        return route.fulfill({
+          json: [
+            {
+              sha,
+              commit: {
+                message: "French update",
+                author: { name: "Contributor", date: "2026-01-01T00:00:00Z" },
+              },
+              author: { login: "contributor" },
+            },
+          ],
+        });
+      if (url.pathname.endsWith("/pulls/43/files"))
+        return route.fulfill({
+          json: [
+            { filename: "content/fr/docs/page.md", status: "modified" },
+            { filename: "content/fr/docs/second.md", status: "added" },
+            { filename: "content/fr/docs/deleted.md", status: "removed" },
+            { filename: "content/es/docs/page.md", status: "modified" },
+          ],
+        });
+      if (url.pathname.includes("/git/trees/"))
+        return route.fulfill({
+          json: {
+            truncated: false,
+            tree: [
+              "content/fr/docs/page.md",
+              "content/fr/docs/second.md",
+              "content/en/docs/page.md",
+              "content/en/docs/second.md",
+            ].map((path) => ({ path, type: "blob" })),
+          },
+        });
+      expect(url.searchParams.get("ref")).toBe(sha);
+      return route.fulfill({
+        body: url.pathname.includes("/content/fr/")
+          ? "# Bonjour\n\n[Guide](./second/)"
+          : "# Source",
+      });
+    },
+  );
+  await expect(
+    page.getByRole("combobox", { name: "Language", exact: true }),
+  ).toContainText("French");
+  await page
+    .getByRole("combobox", { name: "Language", exact: true })
+    .selectOption("fr");
+  const requests = page.getByRole("combobox", {
+    name: "Pull request",
+    exact: true,
   });
-  await expect(page.getByRole("combobox", { name: "Language", exact: true })).toContainText("French");
-  await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("fr");
-  const requests = page.getByRole("combobox", { name: "Pull request", exact: true });
   await expect(requests).toBeEnabled();
   await expect(requests.locator("option")).toHaveCount(102);
   expect(pages).toEqual(["1", "2"]);
   await requests.selectOption("43");
   await expect(page.locator(".workspace-name")).toContainText("PR #43");
-  await expect(page.getByLabel("French files").locator(".file-item")).toHaveCount(2);
-  await expect(page.getByLabel("French translation", { exact: true })).toContainText("Bonjour");
-  await expect(page.getByLabel("English source", { exact: true })).toContainText("Source");
+  await expect(
+    page.getByLabel("French files").locator(".file-item"),
+  ).toHaveCount(2);
+  await expect(
+    page.getByLabel("French translation", { exact: true }),
+  ).toContainText("Bonjour");
+  await expect(
+    page.getByLabel("English source", { exact: true }),
+  ).toContainText("Source");
   await expect(page.getByLabel("Review file").locator("option")).toHaveCount(2);
   await page.route("**/api/llm/review", async (route) => {
     const payload = route.request().postDataJSON();
@@ -808,46 +1122,78 @@ test("language selection paginates labelled PRs and loads their translated files
     }
     return route.fulfill({ json: { model: "ollama/llama3.2", findings: [] } });
   });
-  await page.getByRole("button", { name: "Review with LLM", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Review with LLM", exact: true })
+    .click();
   await expect(page.getByRole("status")).toContainText("LLM tasks complete");
-  await page.getByLabel("French files").getByRole("button", { name: "second.md" }).click();
+  await page
+    .getByLabel("French files")
+    .getByRole("button", { name: "second.md" })
+    .click();
   await expect(page.locator(".file-item.active")).toContainText("second.md");
 });
 
-test("empty languages and stale list responses never replace the current PR options", async ({ page }) => {
+test("empty languages and stale list responses never replace the current PR options", async ({
+  page,
+}) => {
   let release: (() => void) | undefined;
   let started: (() => void) | undefined;
-  const pending = new Promise<void>((resolve) => { started = resolve; });
+  const pending = new Promise<void>((resolve) => {
+    started = resolve;
+  });
   await page.route("**/issues?**", async (route) => {
-    if (new URL(route.request().url()).searchParams.get("labels") === "language/fr") {
+    if (
+      new URL(route.request().url()).searchParams.get("labels") ===
+      "language/fr"
+    ) {
       started!();
-      await new Promise<void>((resolve) => { release = resolve; });
-      return route.fulfill({ json: [{ number: 43, title: "Stale French PR", pull_request: {} }] });
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return route.fulfill({
+        json: [{ number: 43, title: "Stale French PR", pull_request: {} }],
+      });
     }
     return route.fulfill({ json: [] });
   });
   await page.getByLabel("Language", { exact: true }).selectOption("fr");
   await pending;
   await page.getByLabel("Language", { exact: true }).selectOption("zh-cn");
-  await expect(page.getByLabel("Pull request", { exact: true })).toContainText("No open pull requests");
+  await expect(page.getByLabel("Pull request", { exact: true })).toContainText(
+    "No open pull requests",
+  );
   release!();
   await expect(page.getByLabel("Pull request", { exact: true })).toBeDisabled();
-  await expect(page.getByLabel("Pull request", { exact: true }).locator("option")).toHaveCount(1);
-  await expect(page.locator(".workspace-name")).toContainText("Example workspace");
+  await expect(
+    page.getByLabel("Pull request", { exact: true }).locator("option"),
+  ).toHaveCount(1);
+  await expect(page.locator(".workspace-name")).toContainText(
+    "Example workspace",
+  );
 });
 
-test("selecting a PR keeps unsaved edits when replacement is cancelled", async ({ page }) => {
+test("selecting a PR keeps unsaved edits when replacement is cancelled", async ({
+  page,
+}) => {
   await page.getByLabel("Spanish translation", { exact: true }).click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.insertText("\n\nDraft to preserve.");
   page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByLabel("Pull request", { exact: true }).selectOption("42");
-  await expect(page.locator(".workspace-name")).toContainText("Example workspace");
-  await expect(page.getByLabel("Spanish translation", { exact: true })).toContainText("Draft to preserve.");
-  await expect(page.getByLabel("Pull request", { exact: true })).toHaveValue("");
+  await expect(page.locator(".workspace-name")).toContainText(
+    "Example workspace",
+  );
+  await expect(
+    page.getByLabel("Spanish translation", { exact: true }),
+  ).toContainText("Draft to preserve.");
+  await expect(page.getByLabel("Pull request", { exact: true })).toHaveValue(
+    "",
+  );
 });
 
-test("language options match supported folders and map regional locales to GitHub labels", async ({ page }) => {
+test("language options match supported folders and map regional locales to GitHub labels", async ({
+  page,
+}) => {
   const labels: string[] = [];
   await page.route("**/issues?**", async (route) => {
     labels.push(new URL(route.request().url()).searchParams.get("labels")!);
@@ -855,11 +1201,17 @@ test("language options match supported folders and map regional locales to GitHu
   });
   const language = page.getByLabel("Language", { exact: true });
   await expect(language.locator("option")).toHaveCount(4);
-  await expect(language.locator('option[value="en"], option[value="ar"]')).toHaveCount(0);
+  await expect(
+    language.locator('option[value="en"], option[value="ar"]'),
+  ).toHaveCount(0);
   await language.selectOption("zh-cn");
-  await expect(page.getByLabel("Pull request", { exact: true })).toContainText("No open pull requests");
+  await expect(page.getByLabel("Pull request", { exact: true })).toContainText(
+    "No open pull requests",
+  );
   await language.selectOption("pt-br");
-  await expect(page.getByLabel("Pull request", { exact: true })).toContainText("No open pull requests");
+  await expect(page.getByLabel("Pull request", { exact: true })).toContainText(
+    "No open pull requests",
+  );
   expect(labels).toContain("language/zh");
   expect(labels).toContain("language/pt");
 });

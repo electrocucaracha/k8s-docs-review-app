@@ -12,7 +12,7 @@ Start the browser development server with `npm run dev`. To work on the
 desktop app, install Rust and the
 [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/).
 Windows requires Microsoft C++ Build Tools and WebView2; macOS requires Xcode
-Command Line Tools; Linux requires WebKitGTK 4.1 development libraries and
+command-line tools; Linux requires WebKitGTK 4.1 development libraries and
 related packages.
 
 Desktop PR loading requires Git on PATH. Stop any existing preview on port

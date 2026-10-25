@@ -1,16 +1,16 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { Finding } from "./review.js";
-import { defaultTasks, migrateReviewTasks, validateTasks } from "./reviewTasks.js";
+import {
+  defaultTasks,
+  migrateReviewTasks,
+  validateTasks,
+} from "./reviewTasks.js";
 import type { ReviewTask } from "./reviewTasks.js";
 import type { TaskRun } from "./reviewTasks.js";
 import { readCache, writeCache } from "./localCache.js";
 
 export type Provider =
-  | "ollama"
-  | "openai"
-  | "anthropic"
-  | "gemini"
-  | "openai-compatible";
+  "ollama" | "openai" | "anthropic" | "gemini" | "openai-compatible";
 export type LLMSettings = {
   provider: Provider;
   model: string;
@@ -82,7 +82,11 @@ export function validateSettings(settings: LLMSettings): void {
   validateTasks(settings.tasks, settings.concurrency);
   if (!Object.hasOwn(providerDefaults, settings.provider))
     throw new Error("Select a supported provider.");
-  if (typeof settings.model !== "string" || !settings.model.trim() || settings.model.length > 200)
+  if (
+    typeof settings.model !== "string" ||
+    !settings.model.trim() ||
+    settings.model.length > 200
+  )
     throw new Error("Enter a model name of at most 200 characters.");
   if (typeof settings.apiBase !== "string" || settings.apiBase.length > 2048)
     throw new Error("Invalid provider endpoint.");
@@ -177,7 +181,8 @@ export function parseLLMResult(
   const findings = result.findings.map(
     (item: Record<string, unknown>, index): Finding => {
       if (
-        !item || typeof item !== "object" ||
+        !item ||
+        typeof item !== "object" ||
         !["links", "structure", "content"].includes(String(item.kind)) ||
         !["warning", "info"].includes(String(item.severity)) ||
         !["en", "es"].includes(String(item.side))
@@ -222,11 +227,12 @@ export async function requestLLMReview(
   if (request.task) validateTasks([request.task], 1);
   if (isTauri()) {
     const { reviewLLM } = await import("./llmReview.js");
-    const environment = request.settings.apiKey || request.settings.provider === "ollama"
-      ? {}
-      : await invoke<Record<string, string>>("llm_environment", {
-          provider: request.settings.provider,
-        });
+    const environment =
+      request.settings.apiKey || request.settings.provider === "ollama"
+        ? {}
+        : await invoke<Record<string, string>>("llm_environment", {
+            provider: request.settings.provider,
+          });
     return reviewLLM(request, {
       environment,
       fetch: async (input, init) => {
@@ -280,22 +286,48 @@ export type LLMReviewKey = {
   reviewComments?: { path: string; line: number | null; body: string }[];
 };
 
-async function reviewDigest({ settings, tasks, language, english, spanish, reviewComments = [] }: LLMReviewKey): Promise<string> {
+async function reviewDigest({
+  settings,
+  tasks,
+  language,
+  english,
+  spanish,
+  reviewComments = [],
+}: LLMReviewKey): Promise<string> {
   // API keys are excluded so stored reviews survive reloads, where keys are not persisted.
-  const text = JSON.stringify([settings.provider, settings.model, settings.apiBase, tasks, language, english, spanish, reviewComments]);
-  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const text = JSON.stringify([
+    settings.provider,
+    settings.model,
+    settings.apiBase,
+    tasks,
+    language,
+    english,
+    spanish,
+    reviewComments,
+  ]);
+  const bytes = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)),
+  );
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
-export async function loadLLMReview(key: LLMReviewKey): Promise<TaskRun[] | undefined> {
+export async function loadLLMReview(
+  key: LLMReviewKey,
+): Promise<TaskRun[] | undefined> {
   try {
-    return (await readCache<TaskRun[]>("llm-reviews", await reviewDigest(key)))?.value;
+    return (await readCache<TaskRun[]>("llm-reviews", await reviewDigest(key)))
+      ?.value;
   } catch {
     return undefined;
   }
 }
 
-export async function saveLLMReview(key: LLMReviewKey, runs: TaskRun[]): Promise<void> {
+export async function saveLLMReview(
+  key: LLMReviewKey,
+  runs: TaskRun[],
+): Promise<void> {
   const succeeded = runs.filter((run) => run.status === "succeeded");
   if (!succeeded.length) return;
   try {
