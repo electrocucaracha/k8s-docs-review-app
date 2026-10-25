@@ -7,6 +7,7 @@ import { reviewLLM, validateReviewRequest } from "../src/llmReview";
 import {
   defaultSettings,
   loadSettings,
+  planExcerpts,
   requestLLMReview,
   saveSettings,
 } from "../src/llm";
@@ -416,6 +417,122 @@ test("desktop uses the same SDK with native IPC transport and environment creden
       configurable: true,
       value: originalWindow,
     });
+  }
+});
+
+test("large documents are split into heading-aligned excerpts", () => {
+  const section = (title: string) =>
+    `## ${title}\n\n${"Texto del párrafo. ".repeat(40)}\n\n\`\`\`\n# not a heading\n\`\`\``;
+  const english = [
+    "---",
+    "# comment",
+    "---",
+    section("One"),
+    section("Two"),
+    section("Three"),
+  ].join("\n");
+  const spanish = [
+    "---",
+    "---",
+    section("Uno"),
+    section("Dos"),
+    section("Tres"),
+  ].join("\n");
+  assert.deepEqual(planExcerpts("short", "corto"), []);
+  const excerpts = planExcerpts(english, spanish, 2_000);
+  assert.equal(excerpts.length, 3);
+  assert.deepEqual(
+    excerpts.map(({ english, spanish }) => [english, spanish]),
+    [
+      [
+        [0, 10],
+        [0, 9],
+      ],
+      [
+        [10, 17],
+        [9, 16],
+      ],
+      [
+        [17, 24],
+        [16, 23],
+      ],
+    ],
+  );
+  assert.ok(excerpts.every(({ parts }) => parts === 3));
+});
+
+test("excerpt requests send only their lines and merge findings", async () => {
+  const english = Array.from(
+    { length: 40 },
+    (_, index) => `## Section ${index}\n${"Source text. ".repeat(40)}`,
+  ).join("\n");
+  const spanish = english.replaceAll("Source text", "Texto fuente");
+  const prompts: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(String(init?.body)) as LLMRequest;
+    const excerpt = payload.excerpt!;
+    if (excerpt.part === 2)
+      return Response.json(
+        { error: "The LLM request was cancelled or timed out." },
+        { status: 504 },
+      );
+    let prompt = "";
+    const result = await reviewLLM(payload, {
+      fetch: async (input, providerInit) => {
+        prompt = await new Request(input, providerInit).text();
+        return Response.json(
+          providerResponse(
+            "ollama",
+            JSON.stringify({
+              findings: [{ ...finding, line: excerpt.spanish[0] + 1 }, finding],
+            }),
+          ),
+        );
+      },
+    });
+    prompts.push(prompt);
+    return Response.json(result);
+  };
+  try {
+    const result = await requestLLMReview({ ...request, english, spanish });
+    assert.ok(prompts.length > 2);
+    assert.match(prompts[0], /excerpt 1 of/);
+    assert.doesNotMatch(prompts[0], /Section 39/);
+    assert.equal(result.findings[0].title, "LLM review incomplete");
+    assert.match(result.findings[0].detail, /timed out/);
+    // Duplicate findings from different excerpts are merged.
+    assert.equal(result.findings.filter((item) => item.line === 1).length, 1);
+    assert.equal(result.findings.length, prompts.length + 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("excerpts run in parallel up to the shared request limit", async () => {
+  const english = Array.from(
+    { length: 40 },
+    (_, index) => `## Section ${index}\n${"Source text. ".repeat(40)}`,
+  ).join("\n");
+  const settings = { ...defaultSettings, concurrency: 2 };
+  let active = 0;
+  let peak = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    peak = Math.max(peak, ++active);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    active--;
+    return Response.json({ model: "ollama/test", findings: [] });
+  };
+  try {
+    // Two tasks at once must still share the same two request slots.
+    await Promise.all([
+      requestLLMReview({ ...request, settings, english, spanish: english }),
+      requestLLMReview({ ...request, settings, english, spanish: english }),
+    ]);
+    assert.equal(peak, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 

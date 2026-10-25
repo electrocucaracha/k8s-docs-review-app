@@ -10,7 +10,11 @@ import type { TaskRun } from "./reviewTasks.js";
 import { readCache, writeCache } from "./localCache.js";
 
 export type Provider =
-  "ollama" | "openai" | "anthropic" | "gemini" | "openai-compatible";
+  | "ollama"
+  | "openai"
+  | "anthropic"
+  | "gemini"
+  | "openai-compatible";
 export type LLMSettings = {
   provider: Provider;
   model: string;
@@ -23,6 +27,13 @@ export type LLMResult = {
   findings: Finding[];
   model: string;
 };
+/** Zero-based, end-exclusive line ranges of one aligned document excerpt. */
+export type Excerpt = {
+  english: [number, number];
+  spanish: [number, number];
+  part: number;
+  parts: number;
+};
 export type LLMRequest = {
   action: "review" | "test";
   settings: LLMSettings;
@@ -31,7 +42,98 @@ export type LLMRequest = {
   language?: string;
   task?: ReviewTask;
   reviewComments?: { path: string; line: number | null; body: string }[];
+  excerpt?: Excerpt;
 };
+
+// Roughly 3,000-4,000 tokens of document text per request.
+export const excerptCharacterBudget = 12_000;
+
+function sectionStarts(lines: string[]): number[] {
+  const starts = [0];
+  let index = 0;
+  if (lines[0]?.trim() === "---") {
+    const close = lines.findIndex(
+      (line, position) => position > 0 && line.trim() === "---",
+    );
+    index = close < 0 ? lines.length : close + 1;
+  }
+  let fence = "";
+  for (; index < lines.length; index++) {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(lines[index])?.[1];
+    if (marker) {
+      if (!fence) fence = marker;
+      else if (marker[0] === fence[0] && marker.length >= fence.length)
+        fence = "";
+    } else if (!fence && index > 0 && /^#{1,6}\s/.test(lines[index]))
+      starts.push(index);
+  }
+  return starts;
+}
+
+/**
+ * Splits a large document pair into heading-aligned excerpts so each request
+ * stays small enough to finish before the provider deadline.
+ */
+export function planExcerpts(
+  english: string,
+  spanish: string,
+  budget = excerptCharacterBudget,
+): Excerpt[] {
+  if ([...english].length + [...spanish].length <= budget) return [];
+  const en = english.split("\n");
+  const es = spanish.split("\n");
+  const enStarts = sectionStarts(en);
+  const esSections = sectionStarts(es);
+  // Without matching heading counts, map English boundaries proportionally.
+  const esStarts =
+    esSections.length === enStarts.length
+      ? esSections
+      : enStarts.map((start) => Math.round((start * es.length) / en.length));
+  const size = (lines: string[], [start, end]: [number, number]) =>
+    lines.slice(start, end).reduce((total, line) => total + line.length + 1, 0);
+  type Unit = { english: [number, number]; spanish: [number, number] };
+  const units: Unit[] = [];
+  enStarts.forEach((start, index) => {
+    const english: [number, number] = [start, enStarts[index + 1] ?? en.length];
+    const spanish: [number, number] = [
+      esStarts[index],
+      esStarts[index + 1] ?? es.length,
+    ];
+    const pieces = Math.max(
+      1,
+      Math.min(
+        Math.max(english[1] - english[0], spanish[1] - spanish[0]),
+        Math.ceil((size(en, english) + size(es, spanish)) / budget),
+      ),
+    );
+    const at = ([from, to]: [number, number], piece: number) =>
+      from + Math.round(((to - from) * piece) / pieces);
+    for (let piece = 0; piece < pieces; piece++)
+      units.push({
+        english: [at(english, piece), at(english, piece + 1)],
+        spanish: [at(spanish, piece), at(spanish, piece + 1)],
+      });
+  });
+  const chunks: Unit[] = [];
+  let used = 0;
+  for (const unit of units) {
+    const cost = size(en, unit.english) + size(es, unit.spanish);
+    const last = chunks.at(-1);
+    if (last && used + cost <= budget) {
+      last.english[1] = unit.english[1];
+      last.spanish[1] = unit.spanish[1];
+      used += cost;
+    } else {
+      chunks.push({ english: [...unit.english], spanish: [...unit.spanish] });
+      used = cost;
+    }
+  }
+  return chunks.map((chunk, index) => ({
+    ...chunk,
+    part: index + 1,
+    parts: chunks.length,
+  }));
+}
 
 export const providerDefaults: Record<
   Provider,
@@ -220,10 +322,85 @@ export function parseLLMResult(
   };
 }
 
+/**
+ * Reviews large documents excerpt by excerpt (map) and merges the findings
+ * (reduce). Failed excerpts are reported instead of discarding the others.
+ */
 export async function requestLLMReview(
   request: LLMRequest,
 ): Promise<LLMResult> {
+  const excerpts =
+    request.action === "review" && !request.excerpt
+      ? planExcerpts(request.english ?? "", request.spanish ?? "")
+      : [];
+  if (excerpts.length < 2) return requestSingleReview(request);
+  const outcomes = await Promise.allSettled(
+    excerpts.map((excerpt) => requestSingleReview({ ...request, excerpt })),
+  );
+  const findings: Finding[] = [];
+  const skipped: Finding[] = [];
+  let model = "";
+  let failure: unknown;
+  outcomes.forEach((outcome, index) => {
+    if (outcome.status === "fulfilled") {
+      model = outcome.value.model;
+      findings.push(...outcome.value.findings);
+    } else {
+      const cause: unknown = outcome.reason;
+      const excerpt = excerpts[index];
+      failure ??= cause;
+      const [start, end] = excerpt.english;
+      skipped.push({
+        id: "",
+        kind: "content",
+        severity: "warning",
+        side: "en",
+        line: Math.min(start + 1, (request.english ?? "").split("\n").length),
+        title: "LLM review incomplete",
+        detail: `Excerpt ${excerpt.part} of ${excerpt.parts} (English lines ${start + 1}-${end}, translation lines ${excerpt.spanish[0] + 1}-${excerpt.spanish[1]}) was not reviewed: ${cause instanceof Error ? cause.message : String(cause)} Rerun this task to review it.`,
+      });
+    }
+  });
+  if (!model) throw failure;
+  const seen = new Set<string>();
+  const unique = findings.filter((finding) => {
+    const key = `${finding.side}:${finding.line}:${finding.title.trim().toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const kept = [
+    ...unique.filter((finding) => finding.severity === "warning"),
+    ...unique.filter((finding) => finding.severity !== "warning"),
+  ].slice(0, 40 - skipped.length);
+  return {
+    model,
+    findings: [
+      ...skipped,
+      ...unique.filter((finding) => kept.includes(finding)),
+    ].map((finding, index) => ({ ...finding, id: `llm-${index}` })),
+  };
+}
+
+// Shared across tasks and excerpts so in-flight requests never exceed the
+// configured parallel limit (and the bridge's four-request cap).
+let activeRequests = 0;
+const waitingRequests: (() => void)[] = [];
+
+async function requestSingleReview(request: LLMRequest): Promise<LLMResult> {
   validateSettings(request.settings);
+  while (activeRequests >= request.settings.concurrency)
+    await new Promise<void>((resolve) => waitingRequests.push(resolve));
+  activeRequests++;
+  try {
+    return await sendReview(request);
+  } finally {
+    activeRequests--;
+    waitingRequests.shift()?.();
+  }
+}
+
+async function sendReview(request: LLMRequest): Promise<LLMResult> {
   if (request.task) validateTasks([request.task], 1);
   if (isTauri()) {
     const { reviewLLM } = await import("./llmReview.js");

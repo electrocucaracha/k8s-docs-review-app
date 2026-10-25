@@ -17,6 +17,22 @@ import {
 } from "../src/reviewTasks";
 import type { TaskRun } from "../src/reviewTasks";
 import { diffLines } from "../src/lineDiff";
+import { readCache, writeCache } from "../src/localCache";
+
+test("cache operations safely degrade when IndexedDB is unavailable", async () => {
+  assert.equal(await readCache("github", "key"), undefined);
+  await writeCache("github", "key", { value: "cached" });
+});
+
+test("line diff falls back to replacements for large divergent documents", () => {
+  const diff = diffLines(
+    Array.from({ length: 2001 }, (_, index) => `before ${index}`).join("\n"),
+    Array.from({ length: 2000 }, (_, index) => `after ${index}`).join("\n"),
+  );
+  assert.equal(diff.replaced.length, 4000);
+  assert.equal(diff.added.length, 0);
+  assert.equal(diff.removed.length, 1);
+});
 
 test("historical review cases preserve Hugo anchors and heading helpers", () => {
   const result = review(
