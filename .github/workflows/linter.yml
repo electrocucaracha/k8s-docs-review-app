@@ -13,6 +13,23 @@ on:
   pull_request:
 permissions: read-all
 jobs:
+  check-oxlint:
+    name: Check TypeScript (oxlint)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.12"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run oxlint
+        run: npm run lint
   get-sloc:
     name: Count Lines of Code
     runs-on: ubuntu-latest
@@ -48,11 +65,13 @@ jobs:
       contents: read
       models: read
       issues: write
+      statuses: write
     uses: electrocucaracha/gh-workflows/.github/workflows/linter.yml@8f0fa8c0acf90de07569a66d774498c3101d235f # v12.1.1
     with:
       validate_overrides: |-
         {
-          "VALIDATE_BIOME_FORMAT": false
+          "VALIDATE_BIOME_FORMAT": false,
+          "VALIDATE_TYPESCRIPT_ES": false
         }
     secrets:
       COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
