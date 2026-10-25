@@ -11,6 +11,7 @@
     "desktop": "tauri dev",
     "desktop:build": "tauri build",
     "test": "tsx --test tests/review.test.ts tests/llm.test.ts",
+    "test:coverage": "node --import tsx --test --experimental-test-coverage tests/review.test.ts tests/llm.test.ts",
     "test:ui": "playwright test"
   },
   "dependencies": {
