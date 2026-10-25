@@ -7,9 +7,24 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 ##############################################################################
 
+DOCKER_CMD ?= $(shell which docker 2> /dev/null || which podman 2> /dev/null || echo docker)
+
 .PHONY: cleanup
 cleanup:
 	rm -rf node_modules
+
+# Biome has no JS/TS/JSON sources to format in this repo, and the
+# pre-commit hooks include a local "uv run prepare-commit" hook that the
+# super-linter container can't execute, so both validators are disabled
+# via the overrides below.
+.PHONY: lint
+lint: cleanup
+	sudo -E $(DOCKER_CMD) run --rm -v $$(pwd):/tmp/lint \
+	-e RUN_LOCAL=true \
+	-e LINTER_RULES_PATH=/ \
+	-e VALIDATE_BIOME_FORMAT=false \
+	-e DEFAULT_BRANCH=main \
+	ghcr.io/super-linter/super-linter
 
 .PHONY: fmt
 fmt: cleanup
