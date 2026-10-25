@@ -1,0 +1,1 @@
+{"main-capability":{"identifier":"main-capability","description":"Local review window with no general filesystem or network access.","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-destroy","dialog:allow-confirm"]}}

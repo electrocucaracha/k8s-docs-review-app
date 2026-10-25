@@ -1,0 +1,27 @@
+title: Kubernetes Docs Review
+description: Review Kubernetes documentation translations with source-aligned checks and optional AI assistance.
+url: https://electrocucaracha.github.io
+baseurl: /k8s-docs-review-app
+theme: just-the-docs
+plugins:
+  - jekyll-relative-links
+
+enable_copy_code_button: true
+heading_anchors: true
+permalink: pretty
+
+aux_links:
+  GitHub repository: https://github.com/electrocucaracha/k8s-docs-review-app
+aux_links_new_tab: true
+
+defaults:
+  - scope:
+      path: ""
+      type: pages
+    values:
+      layout: default
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor
