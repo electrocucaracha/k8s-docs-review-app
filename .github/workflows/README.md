@@ -5,6 +5,7 @@ This directory contains the GitHub Actions workflows currently used by this repo
 ## Quick context
 
 - `CI:` [linter.yml](./linter.yml) validates the repository on pushes and pull requests with repository linting, broken-link checks, and AI-assisted failure analysis when validation fails.
+- `Application:` [validation.yml](./validation.yml) runs TypeScript linting, builds and tests, native Rust checks, pre-commit hooks, and formatter stability checks on pushes and pull requests.
 - `Maintenance:` [update.yml](./update.yml) refreshes managed version files and opens a pull request with the resulting updates.
 - `Release:` [release.yml](./release.yml) delegates to the shared release workflow to generate changelog metadata and publish a GitHub release.
 
@@ -17,6 +18,7 @@ flowchart TD
   A --> D[Manual dispatch]
 
   B --> B1[linter.yml]
+  B --> B2[validation.yml]
 
   C --> C1[update.yml]
 
@@ -26,11 +28,12 @@ flowchart TD
 
 <!-- markdownlint-disable MD013 -->
 
-| Workflow file                | Purpose                                                                                                                                                              | Trigger                         |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| [linter.yml](./linter.yml)   | Runs repository linting and static analysis checks with `super-linter`, verifies documentation links, and uses AI-assisted diagnosis to explain validation failures. | `push`, `pull_request`          |
-| [update.yml](./update.yml)   | Maintenance workflow that refreshes managed version files and opens a pull request with the update set.                                                              | `schedule`, `workflow_dispatch` |
-| [release.yml](./release.yml) | Publishes the project release process by reusing the shared GitHub workflow for changelog generation and release creation.                                           | `workflow_dispatch`             |
+| Workflow file                      | Purpose                                                                                                                                                              | Trigger                         |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| [linter.yml](./linter.yml)         | Runs repository linting and static analysis checks with `super-linter`, verifies documentation links, and uses AI-assisted diagnosis to explain validation failures. | `push`, `pull_request`          |
+| [validation.yml](./validation.yml) | Builds and tests the application, checks native Rust code, runs pre-commit hooks, and verifies formatter stability.                                                  | `push`, `pull_request`          |
+| [update.yml](./update.yml)         | Maintenance workflow that refreshes managed version files and opens a pull request with the update set.                                                              | `schedule`, `workflow_dispatch` |
+| [release.yml](./release.yml)       | Publishes the project release process by reusing the shared GitHub workflow for changelog generation and release creation.                                           | `workflow_dispatch`             |
 
 <!--
 markdownlint-enable MD013 -->

@@ -1,0 +1,74 @@
+# SPDX-license-identifier: Apache-2.0
+##############################################################################
+# Copyright (c) 2026
+# All rights reserved. This program and the accompanying materials
+# are made available under the terms of the Apache License, Version 2.0
+# which accompanies this distribution, and is available at
+# http://www.apache.org/licenses/LICENSE-2.0
+##############################################################################
+name: Validate Application
+# yamllint disable-line rule:truthy
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check-oxlint:
+    name: Check TypeScript (oxlint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.12"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run oxlint
+        run: npm run lint
+      - name: Build and test TypeScript
+        run: |
+          npm run build
+          npm test
+      - name: Setup Go for formatters
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ">=1.25.0"
+          cache: false
+      - name: Install formatting and hook tools
+        run: |
+          go install mvdan.cc/sh/v3/cmd/shfmt@v3.12.0
+          go install github.com/google/yamlfmt/cmd/yamlfmt@v0.21.0
+          python3 -m venv "$RUNNER_TEMP/pre-commit"
+          "$RUNNER_TEMP/pre-commit/bin/pip" install pre-commit==4.3.0 uv
+      - name: Check formatting stays stable
+        run: |
+          export PATH="$RUNNER_TEMP/pre-commit/bin:$PATH"
+          make fmt
+          git diff --exit-code
+          make fmt
+          git diff --exit-code
+      - name: Run pre-commit hooks
+        run: |
+          "$RUNNER_TEMP/pre-commit/bin/pre-commit" run --all-files
+  check-native:
+    name: Check Rust (Tauri)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Tauri prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          rustup component add clippy rustfmt
+      - name: Check native formatting, lint, and tests
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
