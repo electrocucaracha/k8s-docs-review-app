@@ -56,6 +56,34 @@ pre-commit install
 
 Run them manually across all files with `pre-commit run --all-files`.
 
+Run `make fmt` before validation. It uses the npm-locked Prettier, stylelint,
+Markdownlint, and Textlint tools, plus shfmt, yamlfmt, uv (for pinned isort and
+Black), and Cargo's rustfmt. It preserves `node_modules/` and ignores build
+outputs. Shell indentation comes from `.editorconfig`; stylelint runs after
+Prettier so CSS fixes survive subsequent formatting.
+CI runs the formatter twice and rejects tracked-file changes after either pass.
+Repository-wide linting delegates to the shared workflow in
+[linter.yml](.github/workflows/linter.yml); application builds, tests, hooks,
+and formatter stability checks run in
+[validation.yml](.github/workflows/validation.yml).
+
+CI uses Oxlint and TypeScript for TS/TSX, stylelint for CSS, and Black for
+Python formatting instead of overlapping Biome/ESLint/Ruff format checks.
+Python linting and type checks remain enabled. Pre-commit runs with npm
+dependencies installed; native Clippy and tests run separately with Linux
+Tauri prerequisites. Only Rust edition 2021 is checked, matching Cargo.
+Super-Linter and Markdownlint use the same `.markdownlint.yml` configuration.
+Duplicate detection excludes generated schemas, lockfiles, and test fixtures;
+handwritten production sources have a 2% duplication ceiling.
+
+Trivy still scans dependencies, configuration, and secrets. The temporary
+exception in `.trivyignore.yaml` covers only GHSA-wrw7-89jp-8q8g in
+`src-tauri/Cargo.lock`, expiring on 2027-01-26. Tauri's GTK3 dependencies
+require glib 0.18, while the advisory is patched only in glib 0.20+.
+Remove the exception when a compatible upstream fix is available.
+The KaTeX override keeps Markdownlint's math parser on the patched 0.18.2
+release until its dependency range is updated.
+
 Run the focused checks and test suites with:
 
 ```sh

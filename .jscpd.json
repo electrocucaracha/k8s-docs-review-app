@@ -1,0 +1,13 @@
+{
+  "threshold": 2,
+  "reporters": ["consoleFull"],
+  "ignore": [
+    "**/node_modules/**",
+    "**/target/**",
+    "**/dist/**",
+    "**/gen/**",
+    "**/*lock*",
+    "**/tests/**"
+  ],
+  "absolute": true
+}

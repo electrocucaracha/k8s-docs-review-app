@@ -1,0 +1,4 @@
+[codespell]
+# Spanish regex stems and sample documentation, not English misspellings.
+ignore-words-list = acent,comandos
+skip = .git,node_modules,src-tauri/target,dist,package-lock.json,*/package-lock.json

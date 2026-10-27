@@ -1,0 +1,8 @@
+root = true
+
+[{node_modules,src-tauri/target,dist,.cache,.venv,vendor}/**]
+ignore = true
+
+[*.sh]
+indent_style = space
+indent_size = 4
