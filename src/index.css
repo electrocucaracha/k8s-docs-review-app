@@ -1,15 +1,16 @@
-@import "@fontsource-variable/public-sans";
-@import "@fontsource-variable/jetbrains-mono";
+@import url("@fontsource-variable/public-sans");
+@import url("@fontsource-variable/jetbrains-mono");
 
 :root {
   font-family: "Public Sans Variable", sans-serif;
   color: #24332e;
   background: #f6f8f5;
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  text-rendering: optimizelegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-size: 13px;
+
   --ink: #24332e;
   --muted: #748078;
   --line: #e2e7e1;
@@ -18,19 +19,23 @@
   --danger: #bd454b;
   --warning: #a2771b;
 }
+
 * {
   box-sizing: border-box;
   letter-spacing: 0;
 }
+
 body {
   margin: 0;
   min-width: 360px;
 }
+
 button,
 input,
 select {
   font: inherit;
 }
+
 button {
   display: inline-flex;
   align-items: center;
@@ -46,27 +51,33 @@ button {
   font-weight: 550;
   transition: background 0.12s;
 }
+
 button:hover {
   background: #f0f4f0;
 }
+
 button:disabled {
   opacity: 0.5;
   cursor: wait;
 }
+
 button:focus-visible,
 input:focus-visible,
 select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
 }
+
 button.primary:hover {
   background: #066d64;
 }
+
 button.icon-button {
   width: 30px;
   height: 30px;
@@ -76,17 +87,21 @@ button.icon-button {
   background: transparent;
   flex-shrink: 0;
 }
+
 button.icon-button:hover {
   background: #e8eee8;
 }
+
 svg {
   flex-shrink: 0;
 }
+
 input,
 select {
   min-width: 0;
   color: var(--ink);
 }
+
 ::selection {
   background: #c7e7d8;
 }
