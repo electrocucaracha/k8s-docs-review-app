@@ -1,0 +1,7 @@
+vulnerabilities:
+  - id: GHSA-wrw7-89jp-8q8g
+    paths:
+      - src-tauri/Cargo.lock
+    expired_at: 2027-01-26
+    statement: >-
+      Tauri 2's Linux GTK3 stack requires glib 0.18; the fix is only in glib >=0.20 and cannot be substituted compatibly. Revisit when Tauri supports a patched GTK stack. This exception does not cover other advisories or lockfiles.
