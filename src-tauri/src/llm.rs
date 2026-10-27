@@ -67,7 +67,7 @@ pub fn llm_environment(provider: String) -> Result<HashMap<String, String>, Stri
         _ => return Err("Select a supported LLM provider.".into()),
     };
     Ok(names
-        .into_iter()
+        .iter()
         .filter_map(|name| {
             std::env::var(name)
                 .ok()
