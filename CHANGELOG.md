@@ -9,6 +9,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.3] - 2026-10-26
+
+### Changed
+
+- Modernized the codebase to improve readability and consistency, with Rust code now formatted vertically for long function parameters and blocks, and CSS files updated with modern media query syntax and improved spacing, enhancing maintainability without altering functional behavior. [d2f547dc](https://github.com/electrocucaracha/k8s-docs-review-app/commit/d2f547dc31a393d6059744c03b125fb9f28bc775)
+
+## [5.0.2] - 2026-10-26
+
+### Changed
+
+- Enabled standardized development tooling and code quality enforcement by introducing configuration files for spelling checks, editor settings, code duplication thresholds, type checking, formatting exclusions, and CSS linter rules, and updating guidelines in CONTRIBUTING.md. [ca66cba7](https://github.com/electrocucaracha/k8s-docs-review-app/commit/ca66cba79563fd9536ecfe3f94e20f79546a36c3)
+
+## [5.0.1] - 2026-10-26
+
+### Changed
+
+- Clarified the functionality and intent of the audit_review_history.py script through the addition of descriptive docstrings and improved code formatting, without altering program logic. [650758f3](https://github.com/electrocucaracha/k8s-docs-review-app/commit/650758f3081ba6767cd35da98498aa487a9895cb)
+
+## [5.0.0] - 2026-10-26
+
+### Removed
+
+- Standardized and expanded code linting and formatting across the project by delegating to the shared super-linter workflow with explicit override controls. [fd2662a0](https://github.com/electrocucaracha/k8s-docs-review-app/commit/fd2662a01826f200849609ddb7cd8eb0bb986a68)
+
+## [4.12.0] - 2026-10-26
+
+### Added
+
+- Enabled effective vulnerability and misconfiguration scanning by introducing Trivy configuration that silences a glib vulnerability required by Tauri 2 on Linux, while allowing time for upstream resolution. [e0e4f57d](https://github.com/electrocucaracha/k8s-docs-review-app/commit/e0e4f57dded90f79aca43b62118c04e31519d278)
+
+## [4.11.2] - 2026-10-26
+
+### Changed
+
+- Enabled consistent application code and native code quality checks on all pushes and pull requests through the introduction of a new GitHub Actions workflow. [14fb4df0](https://github.com/electrocucaracha/k8s-docs-review-app/commit/14fb4df003483d1a4f31095068cfd398d8ed86d4)
+
+## [4.11.1] - 2026-10-26
+
+### Changed
+
+- Streamlined pre-commit linting by excluding generated files and upgrading the markdownlint hook to the node markdownlint-cli2 version. [da05dad7](https://github.com/electrocucaracha/k8s-docs-review-app/commit/da05dad71645ce557b5f56c26bc46914fa612677)
+
+## [4.11.0] - 2026-10-25
+
+### Added
+
+- Optimized LLM review reliability by introducing retry logic that halves timed-out excerpts up to twice before reporting incomplete reviews, while also improving performance by limiting excerpt size for Ollama providers and disabling model reasoning, and enhancing error differentiation and structured logging for LLM requests and responses. [03bc33e3](https://github.com/electrocucaracha/k8s-docs-review-app/commit/03bc33e381e7ec579bff10f71128078680e22d8a)
+
+## [4.10.0] - 2026-10-25
+
+### Added
+
+- Enabled filtering of pull requests to only include those with zero or one label whose name starts with "language/", reducing ambiguity in processing or categorization logic and resulting in fewer pull requests being displayed to users. [19ba7ed6](https://github.com/electrocucaracha/k8s-docs-review-app/commit/19ba7ed66e303717ecb0d1736602cc419bc000e8)
+
+## [4.9.0] - 2026-10-25
+
+### Added
+
+- Enabled detailed release notes for versions 4.5.0 through 4.8.2, improving traceability and clarity for contributors by summarizing key changes, optimizations, and new features. [8099064f](https://github.com/electrocucaracha/k8s-docs-review-app/commit/8099064f9b289829998229fdd77b90222f007eba)
+
 ## [4.8.2] - 2026-10-25
 
 ### Changed
