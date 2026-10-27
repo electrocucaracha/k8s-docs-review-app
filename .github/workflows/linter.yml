@@ -13,23 +13,6 @@ on:
   pull_request:
 permissions: read-all
 jobs:
-  check-oxlint:
-    name: Check TypeScript (oxlint)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: "22.12"
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Run oxlint
-        run: npm run lint
   get-sloc:
     name: Count Lines of Code
     runs-on: ubuntu-latest
@@ -65,13 +48,26 @@ jobs:
       contents: read
       models: read
       issues: write
-      statuses: write
     uses: electrocucaracha/gh-workflows/.github/workflows/linter.yml@8f0fa8c0acf90de07569a66d774498c3101d235f # v12.1.1
     with:
+      # Oxlint/tsc own TS/TSX; Stylelint owns CSS; Black owns Python formatting.
+      # Pre-commit needs npm dependencies; Clippy needs Tauri's native libraries.
+      # The shared workflow cannot create commit statuses with its read-only token.
       validate_overrides: |-
         {
           "VALIDATE_BIOME_FORMAT": false,
-          "VALIDATE_TYPESCRIPT_ES": false
+          "VALIDATE_BIOME_LINT": false,
+          "VALIDATE_TYPESCRIPT_ES": false,
+          "VALIDATE_TSX": false,
+          "VALIDATE_PRE_COMMIT": false,
+          "VALIDATE_PYTHON_RUFF_FORMAT": false,
+          "VALIDATE_RUST_2015": false,
+          "VALIDATE_RUST_2018": false,
+          "VALIDATE_RUST_2024": false,
+          "VALIDATE_RUST_CLIPPY": false,
+          "MARKDOWN_CONFIG_FILE": ".markdownlint.yml",
+          "MULTI_STATUS": false,
+          "SAVE_SUPER_LINTER_SUMMARY": true
         }
     secrets:
       COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
