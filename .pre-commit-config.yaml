@@ -9,6 +9,7 @@
 default_install_hook_types:
   - pre-commit
   - prepare-commit-msg
+exclude: ^src-tauri/gen/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -25,8 +26,13 @@ repos:
         name: oxlint
         entry: npm run lint
         language: system
-        types: [ts, tsx]
+        types_or: [ts, tsx]
         pass_filenames: false
+      - id: markdownlint
+        name: markdownlint
+        entry: npx --no-install markdownlint-cli2
+        language: system
+        types: [markdown]
   - repo: https://github.com/openstack/bashate.git
     rev: 2.1.1
     hooks:
@@ -38,11 +44,6 @@ repos:
         args: ["-v", "-iE006", "-iE005,E042,E043"]
         files: .*\.sh
         exclude: ".tox/.*"
-  - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.50.0
-    hooks:
-      - id: markdownlint
-        files: \.(md|mdown|markdown)$
   - repo: https://github.com/google/yamlfmt
     rev: v0.21.0
     hooks:
