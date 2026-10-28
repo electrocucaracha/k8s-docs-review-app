@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod hugo;
 mod llm;
 mod published_references;
 
@@ -557,7 +558,8 @@ fn main() {
             llm::llm_fetch,
             llm::llm_environment,
             published_references::check_published_reference,
-            published_references::open_issue_draft
+            published_references::open_issue_draft,
+            hugo::check_hugo_links
         ])
         .run(tauri::generate_context!())
         .expect("Failed to run Kubernetes Docs Review");

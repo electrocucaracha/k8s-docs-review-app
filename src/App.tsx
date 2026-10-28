@@ -28,6 +28,7 @@ import {
   Play,
   ChevronDown,
   ExternalLink,
+  Hammer,
 } from "lucide-react";
 import { Editor } from "./Editor";
 import type { EditorHandle } from "./Editor";
@@ -72,6 +73,7 @@ import {
   publishedFindings,
 } from "./publishedReferences";
 import type { PublishedFinding } from "./publishedReferences";
+import { checkHugoBuild, hugoFindings, hugoSupersedes } from "./hugoBuild";
 import "./App.css";
 
 const fileName = (path: string) => path.split("/").pop() ?? path;
@@ -171,6 +173,15 @@ export default function App() {
     spanish: string;
     findings: PublishedFinding[];
     pages: number;
+  } | null>(null);
+  const [hugoBusy, setHugoBusy] = useState(false);
+  const [hugoResult, setHugoResult] = useState<{
+    path: string;
+    revision: string;
+    english: string;
+    spanish: string;
+    findings: Finding[];
+    rendered: ("en" | "es")[];
   } | null>(null);
   const approvedProvider = useRef("");
   const englishEditor = useRef<EditorHandle>(null);
@@ -284,12 +295,24 @@ export default function App() {
     publishedResult.spanish === spanish.content
       ? publishedResult
       : null;
+  const activeHugoResult =
+    hugoResult?.path === activePath &&
+    hugoResult.revision === revision &&
+    hugoResult.english === english.content &&
+    hugoResult.spanish === spanish.content
+      ? hugoResult
+      : null;
   const review = {
     ...offlineReview,
     findings: [
-      ...offlineReview.findings,
+      ...offlineReview.findings.filter(
+        (finding) =>
+          !activeHugoResult?.rendered.includes(finding.side) ||
+          !hugoSupersedes.has(finding.title),
+      ),
       ...llmFindings,
       ...(activePublishedResult?.findings ?? []),
+      ...(activeHugoResult?.findings ?? []),
     ],
   };
   const dirty = spanish.content !== original.content;
@@ -699,6 +722,47 @@ export default function App() {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setReferencesBusy(false);
+    }
+  }
+
+  async function checkHugo() {
+    if (hugoBusy || busy || dirty) return;
+    setHugoBusy(true);
+    setError("");
+    setNotice(
+      "Building the checkout with Hugo. The first build can take several minutes.",
+    );
+    try {
+      const report = await checkHugoBuild([english.path, spanish.path]);
+      const findings = hugoFindings(report, english, spanish);
+      setHugoResult({
+        path: activePath,
+        revision,
+        english: english.content,
+        spanish: spanish.content,
+        findings,
+        rendered: report.success
+          ? report.pages
+              .filter((page) => page.rendered)
+              .map((page) => (page.path === english.path ? "en" : "es"))
+          : [],
+      });
+      const links = report.pages.flatMap((page) => page.links);
+      const version =
+        report.expectedVersion &&
+        !report.version.includes(`v${report.expectedVersion}`)
+          ? ` The site pins Hugo ${report.expectedVersion}; results from ${report.version.split(" ")[1] ?? report.version} may differ.`
+          : "";
+      setNotice(
+        report.success
+          ? `Hugo build: ${links.filter((link) => link.status !== "skipped").length} rendered links checked, ${findings.filter((finding) => finding.severity === "error").length} errors, ${links.filter((link) => link.status === "skipped").length} links to unbuilt languages skipped.${version}`
+          : `Hugo build failed. See the findings for details.${version}`,
+      );
+    } catch (cause) {
+      setNotice("");
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setHugoBusy(false);
     }
   }
 
@@ -1234,6 +1298,25 @@ export default function App() {
                   {referencesBusy ? "Checking..." : "Check references"}
                 </span>
               </button>
+              {workspace.native && (
+                <button
+                  title={
+                    dirty
+                      ? "Save the translation before building it with Hugo"
+                      : "Build the PR checkout with Hugo and verify rendered links and anchors"
+                  }
+                  aria-label="Build with Hugo"
+                  disabled={busy || hugoBusy || dirty || !source}
+                  onClick={() => void checkHugo()}
+                >
+                  {hugoBusy ? (
+                    <LoaderCircle size={15} className="spin" />
+                  ) : (
+                    <Hammer size={15} />
+                  )}
+                  <span>{hugoBusy ? "Building..." : "Build with Hugo"}</span>
+                </button>
+              )}
               <button
                 title="Send the current pair to the configured LLM provider"
                 aria-label="Review with LLM"

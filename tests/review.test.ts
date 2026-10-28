@@ -18,6 +18,8 @@ import {
 import type { TaskRun } from "../src/reviewTasks";
 import { diffLines } from "../src/lineDiff";
 import { readCache, writeCache } from "../src/localCache";
+import { hugoFindings, hugoSupersedes } from "../src/hugoBuild";
+import type { HugoReport } from "../src/hugoBuild";
 
 test("cache operations safely degrade when IndexedDB is unavailable", async () => {
   assert.equal(await readCache("github", "key"), undefined);
@@ -669,4 +671,107 @@ test("example review detects intended issues with source locations", () => {
   );
   assert.equal(brokenReference?.line, 32);
   assert.equal(brokenReference?.side, "es");
+});
+
+test("Hugo rendered links map back to Markdown source lines", () => {
+  const english = {
+    path: "content/en/docs/a.md",
+    content: "# A\n\nSee [pods](/docs/pods/#spec).\n",
+  };
+  const spanish = {
+    path: "content/es/docs/a.md",
+    content: [
+      "# A",
+      "",
+      "Ver [pods](/docs/pods/#spec) y [pods](/docs/pods/#spec).",
+      "",
+      'Lee {{< relref "/docs/concepts/old.md" >}} y [guía](../guia/).',
+      "",
+      '{{< glossary_tooltip text="nodo" term_id="node" >}}',
+    ].join("\n"),
+  };
+  const report: HugoReport = {
+    version: "hugo v0.144.2+extended",
+    expectedVersion: "0.144.2",
+    success: true,
+    pages: [
+      {
+        path: spanish.path,
+        route: "/es/docs/a/",
+        rendered: true,
+        links: [
+          {
+            href: "/es/docs/pods/#spec",
+            text: "pods",
+            status: "ok",
+            detail: "",
+          },
+          {
+            href: "/docs/pods/#spec",
+            text: "pods",
+            status: "anchor",
+            detail: "#spec is missing.",
+          },
+          {
+            href: "/docs/concepts/old/",
+            text: "",
+            status: "redirect",
+            detail: "redirected",
+          },
+          {
+            href: "/es/docs/guia/",
+            text: "guía",
+            status: "missing",
+            detail: "gone",
+          },
+          {
+            href: "/docs/reference/glossary/?all=true#term-node",
+            text: "nodo",
+            status: "missing",
+            detail: "gone",
+          },
+          {
+            href: "/docs/included/",
+            text: "incluido",
+            status: "missing",
+            detail: "gone",
+          },
+          { href: "/ja/docs/", text: "日本語", status: "skipped", detail: "" },
+        ],
+      },
+      { path: english.path, route: "/docs/a/", rendered: false, links: [] },
+    ],
+    diagnostics: [
+      {
+        level: "warning",
+        path: spanish.path,
+        line: 5,
+        message: 'WARN REF_NOT_FOUND: Ref "/docs/concepts/old.md"',
+      },
+    ],
+  };
+  const findings = hugoFindings(report, english, spanish);
+  const byTitle = (title: string) =>
+    findings.filter((finding) => finding.title === title);
+  assert.deepEqual(
+    byTitle("Rendered anchor missing").map((finding) => finding.line),
+    [3],
+  );
+  assert.equal(byTitle("Link relies on a redirect")[0].line, 5);
+  assert.equal(byTitle("Link relies on a redirect")[0].severity, "warning");
+  const missing = byTitle("Rendered link target missing");
+  assert.deepEqual(
+    missing.map((finding) => finding.line),
+    [5, 7, 1],
+  );
+  assert.match(missing[2].detail, /shortcode or include/);
+  assert.equal(byTitle("Hugo reference not found")[0].severity, "error");
+  assert.equal(byTitle("Rendered page not found")[0].side, "en");
+  assert.ok(!findings.some((finding) => finding.detail.includes("日本語")));
+  assert.ok(hugoSupersedes.has("Anchor not found"));
+  assert.ok(
+    hugoFindings({ ...report, success: false }, english, spanish).some(
+      (finding) => finding.title === "Hugo build failed",
+    ),
+  );
 });
