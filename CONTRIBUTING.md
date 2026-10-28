@@ -123,12 +123,10 @@ cargo test --manifest-path src-tauri/Cargo.toml live_published_pages -- --ignore
 ## Documentation
 
 The documentation uses Jekyll and Just the Docs, independently of the Vite app.
-Follow [Publish to GitHub Pages](docs/publishing.md) for Ruby prerequisites,
-local preview commands, and repository setup.
 Documentation changes are built on pull requests and published from `main`
 after GitHub Pages is configured to use GitHub Actions.
 
-Keep task procedures in the [user guide](docs/user-guide.md) or a focused how-to page,
+Keep task procedures in the [user guide](docs/how-to-guides/user-guide.md) or a focused how-to page,
 exact defaults in the [configuration reference](docs/references/configuration.md),
 and design rationale in the [explanations](docs/explanations/index.md).
 Update related pages when observable behavior changes.

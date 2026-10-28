@@ -88,7 +88,7 @@ Check the reported URL in a browser and retry later if appropriate.
 
 A successful page request does not verify a fragment such as `#before-you-begin`,
 or detect a soft-404 page returning HTTP 200.
-See [published-reference behavior](../user-guide.md#published-references).
+See [published-reference behavior](user-guide.md#published-references).
 
 ## A desktop save reports an external change
 
@@ -103,13 +103,26 @@ Compare the review revision with the current pull request head before posting fi
 
 ## A link finding disagrees with the rendered site
 
-Check the actual Hugo or Netlify preview at the pull request head revision.
+In the desktop app, save the translation and select **Build with Hugo**.
+Its rendered-link findings replace the offline link approximation for the pair.
+Otherwise, check the actual Hugo or Netlify preview at the pull request head revision.
 Aliases, generated pages, complex shortcodes, and custom permalinks
 are not fully resolved by offline checks.
 Cross-file fragments without loaded target Markdown remain unchecked.
 
 See [how review works](../explanations/how-review-works.md)
 for the distinction between findings and proof of correctness.
+
+## Build with Hugo fails
+
+Install [Hugo extended](https://gohugo.io/installation/) and Node.js with npm,
+and ensure `hugo` and `npm` are on `PATH`. To use another binary, start the app
+with `HUGO_BIN` set to its path. Prefer the `HUGO_VERSION` from the website's
+`netlify.toml`; the notice reports a version mismatch.
+The first build installs the Docsy theme with `npm ci` in the checkout,
+so it needs access to the npm registry and GitHub.
+A **Hugo build failed** finding lists the build errors;
+fix errors reported against the reviewed files and retry.
 
 ## Report a reproducible problem
 

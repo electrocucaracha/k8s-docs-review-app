@@ -13,7 +13,7 @@
 [![Scc COCOMO Badge](https://sloc.xyz/github/electrocucaracha/k8s-docs-review-app?category=cocomo)](https://github.com/boyter/scc/)
 
 [Documentation](https://electrocucaracha.github.io/k8s-docs-review-app/)
-| [First review](docs/tutorials/first-review.md)
+| [User guide](docs/how-to-guides/user-guide.md)
 | [Contributing](CONTRIBUTING.md)
 
 Kubernetes Docs Review is a local workspace for reviewing English sources and

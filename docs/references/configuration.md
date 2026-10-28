@@ -85,6 +85,7 @@ Edits to documents or task configuration invalidate previous results.
 | LLM connection test                      | Short probe to the configured provider                                                     |
 | LLM review                               | Current document pair submitted on explicit request; remote providers require confirmation |
 | Published-reference check                | Explicit HTTP requests restricted to Kubernetes documentation                              |
+| Hugo build check                         | Desktop only; runs `hugo` and, on first use, `npm ci` in the app-managed checkout          |
 | Pull request loading                     | GitHub network requests; desktop mode also uses Git                                        |
 
 API keys are supplied in request headers, never command arguments or logs.
@@ -105,6 +106,7 @@ The app includes no telemetry.
 | Concurrent published-page checks  | Four                                       |
 | Published-page request deadline   | 15 seconds                                 |
 | Published-page redirects          | Five, within Kubernetes documentation only |
+| Hugo build / Docsy install        | 15 minutes / 10 minutes                    |
 
 The model's own context limit still applies.
 Published checks establish page availability,
@@ -112,6 +114,6 @@ not published fragment correctness or semantic accuracy.
 
 ## Related documentation
 
-- [Configure LLM review](../user-guide.md#configure-llm-review).
+- [Configure LLM review](../how-to-guides/user-guide.md#configure-llm-review).
 - [Recover from a failed request](../how-to-guides/troubleshooting.md).
 - [Understand review limitations](../explanations/how-review-works.md).

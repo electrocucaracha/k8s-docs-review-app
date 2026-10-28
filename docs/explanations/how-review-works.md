@@ -17,18 +17,7 @@ with the selected translation.
 English remains read-only.
 The same TypeScript review engine runs in browser and desktop modes.
 
-```text
-Browser development
-  React interface -> GitHub public API -> PR files at a pinned head revision
-                  -> local Markdown checks
-                  -> Vite bridge / TypeScript AI SDK -> configured provider
-                  -> Vite bridge -> published Kubernetes documentation
-
-Desktop
-  React interface -> Tauri / Rust -> app-managed Git checkout
-                                 -> published Kubernetes documentation
-                  -> TypeScript AI SDK -> Tauri HTTP transport -> configured provider
-```
+![Browser and desktop runtime architecture](../assets/runtime-architecture.png)
 
 In browser mode, files and drafts live in memory.
 The Vite development server supplies the local HTTP bridges
@@ -84,6 +73,11 @@ The app only sends supported Kubernetes documentation URLs to its bridge,
 which follows a bounded redirect chain and returns status information.
 The check establishes page availability, not anchor or content correctness.
 
+The interaction order is the same in both runtimes.
+Only the pull-request source and optional network transport change:
+
+![Review request flow](../assets/review-request-flow.png)
+
 ## Mechanical differences are evidence, not verdicts
 
 Offline checks parse Markdown and compare structure, references, code, and metadata.
@@ -103,6 +97,13 @@ Generated pages, aliases, custom permalinks, and complex shortcodes
 can differ from the offline approximation.
 A truncated GitHub tree produces informational missing-target results,
 not confirmed broken links.
+
+In the desktop app, **Build with Hugo** replaces that approximation
+for the current pair. It renders the pull request checkout with the
+site's own `hugo.toml`, Docsy theme, and `render-link` hook, then checks
+each rendered link against the generated output and `_redirects` file.
+Rendered heading IDs are authoritative,
+whereas offline anchors use GitHub-style slugs.
 
 ## AI review answers a different question
 
@@ -148,14 +149,9 @@ It does not verify contribution agreements, required checks, authorized approval
 preview freshness, or every commit.
 It also does not execute Kubernetes commands or render the site.
 
-The [Spanish review history coverage](../spanish-review-coverage.md)
-records the evidence behind Spanish-specific checks and prompts,
-with explicit boundaries for manual review.
-The historical audit is a dated snapshot, not a guarantee of future coverage.
-
 ## Related documentation
 
-- [Review a pull request](../user-guide.md).
+- [Review a pull request](../how-to-guides/user-guide.md).
 - [Extend the reviewer](../how-to-guides/extending-the-reviewer.md).
 - [Settings and limits](../references/configuration.md).
 - [Troubleshoot unexpected findings](../how-to-guides/troubleshooting.md).

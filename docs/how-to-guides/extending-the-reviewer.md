@@ -24,8 +24,7 @@ npm run dev
 ```
 
 Open `http://127.0.0.1:5173` to try changes against the example workspace.
-The app's [first-review tutorial](../tutorials/first-review.md)
-walks through the example workflow.
+The app's [user guide](user-guide.md) covers the review workflow.
 Desktop changes also require Rust, Git, and the
 [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/).
 
