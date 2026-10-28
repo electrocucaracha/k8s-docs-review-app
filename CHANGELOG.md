@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.2.0] - 2026-10-28
+
+### Added
+
+- Enabled users to build and verify rendered links and anchors in the PR checkout by integrating a Hugo build and link checker, exposing a Tauri command and displaying findings for missing or broken links. [405a8cf9](https://github.com/electrocucaracha/k8s-docs-review-app/commit/405a8cf975dd2896b7f0db1f8a81955e7c5ac810)
+
+## [6.1.0] - 2026-10-28
+
+### Added
+
+- Enabled the integration of Hugo build checks for users to verify rendered links and anchors, and updated documentation to reflect the new feature, including usage guidelines, troubleshooting, and configuration defaults. [bb5f6a11](https://github.com/electrocucaracha/k8s-docs-review-app/commit/bb5f6a1119ec116b3ece4af23f6dc0c10931dc3b)
+
+## [6.0.0] - 2026-10-27
+
+### Removed
+
+- Streamlined the documentation by removing maintenance-heavy or redundant guides and improving navigation structure. [df5d07d9](https://github.com/electrocucaracha/k8s-docs-review-app/commit/df5d07d99a1b935284e01fe12710c9011d2f20e5)
+
+## [5.2.0] - 2026-10-27
+
+### Added
+
+- Enabled better visualization of the app's functionality with the addition of a diagram image to the readme. [d8f95a79](https://github.com/electrocucaracha/k8s-docs-review-app/commit/d8f95a79bf3a508df93e32f2831c52696731e394)
+
+## [5.1.2] - 2026-10-27
+
+### Changed
+
+- Enabled contributors to extend core functionality by introducing a new extension guide and architecture diagram that provide implementation boundaries and request flow, as well as detailed instructions on adding checks, AI tasks, providers, or runtime features. [b9156c0b](https://github.com/electrocucaracha/k8s-docs-review-app/commit/b9156c0b5fc5830c609e9ddd6124b8a45b2d25d9)
+
+## [5.1.1] - 2026-10-26
+
+### Fixed
+
+- Resolved environment variable lookup for LLM providers to safely allow repeated lookups and avoid ownership issues, improving code correctness and maintainability without introducing any breaking changes or requiring migration steps. [d74c048e](https://github.com/electrocucaracha/k8s-docs-review-app/commit/d74c048ed65120d9c789a5116e4adefaf81988f7)
+
+## [5.1.0] - 2026-10-26
+
+### Added
+
+- Enabled detailed release notes for versions 4.9.0 through 5.0.3, improving project traceability and providing clear context to contributors about recent development history without introducing any functional changes to the code. [e82427d9](https://github.com/electrocucaracha/k8s-docs-review-app/commit/e82427d9a017c3bd72b8e70d2c3217b0e97397df)
+
 ## [5.0.3] - 2026-10-26
 
 ### Changed
