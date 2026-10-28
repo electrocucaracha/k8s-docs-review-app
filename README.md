@@ -25,6 +25,8 @@ The app runs in a browser or as a native desktop app. Offline review requires
 no backend, Azure account, or API key. Browser mode never writes to your
 checkout; the desktop app can save translations in its app-managed checkout.
 
+![Diagram](docs/assets/diagram.png)
+
 ## How It Works
 
 Choose a supported translation language, with Spanish selected by default,
