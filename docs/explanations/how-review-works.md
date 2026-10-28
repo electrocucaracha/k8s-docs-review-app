@@ -44,6 +44,46 @@ Save guards protect against path escapes and external file changes.
 This is why GitHub Pages hosts the documentation rather than the complete review service:
 Pages cannot run the backend, run Git, or provide the local bridges.
 
+## Source map
+
+The main implementation boundaries are:
+
+| Area                     | Files                                                                                    | Responsibility                                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Application workflow     | `src/App.tsx`                                                                            | Workspace state, pull request selection, editors, findings, settings, and save/export actions.              |
+| Markdown review          | `src/review.ts`                                                                          | Markdown parsing, link and anchor resolution, section alignment, and deterministic findings.                |
+| Spanish editorial checks | `src/editorialChecks.ts`                                                                 | History-backed Spanish-specific checks used by the shared review engine.                                    |
+| GitHub pull requests     | `src/pullRequest.ts`                                                                     | Language and pull request discovery, revision-pinned file loading, commit comparisons, and browser caching. |
+| AI settings and requests | `src/llm.ts`, `src/reviewTasks.ts`, `src/llmReview.ts`                                   | Settings persistence, task scheduling, provider requests, prompt construction, and result validation.       |
+| Browser bridges          | `llm/bridge.ts`, `server/publishedReferences.ts`                                         | Same-origin development-server routes for AI review and published-page checks.                              |
+| Published references     | `src/publishedReferences.ts`, `src/documentationUrl.ts`                                  | URL collection, request orchestration, result classification, and GitHub issue drafts.                      |
+| Desktop runtime          | `src-tauri/src/main.rs`, `src-tauri/src/llm.rs`, `src-tauri/src/published_references.rs` | Tauri commands, managed Git checkouts, safe saves and exports, and restricted native HTTP requests.         |
+| Verification             | `tests/review.test.ts`, `tests/llm.test.ts`, `tests/app.spec.ts`, Rust unit tests        | Review and provider unit tests, browser workflows, and native filesystem/transport checks.                  |
+
+The React interface calls the shared TypeScript review functions in either runtime.
+Only operations that need a server or operating-system capability cross a bridge:
+the Vite middleware handles them in browser development, while Tauri commands handle them on desktop.
+The static documentation site does not bundle either bridge.
+
+## Review request flow
+
+When you select a document, the app pairs its translation with the English path
+and runs `reviewDocuments` locally. That function parses Markdown and returns
+findings and tentative section alignments; it does not call GitHub or an AI provider.
+The browser loader pins pull request documents to the selected head commit,
+so both sides of the comparison come from a known revision.
+
+When you explicitly start an AI review, the app runs each enabled review task
+through the TypeScript AI SDK. Large pairs are divided into heading-aligned excerpts.
+The Vite bridge handles provider requests in browser development; desktop sends
+the same SDK requests through the restricted Rust transport.
+Both paths validate settings and response findings.
+
+Published-reference checks are a separate explicit action.
+The app only sends supported Kubernetes documentation URLs to its bridge,
+which follows a bounded redirect chain and returns status information.
+The check establishes page availability, not anchor or content correctness.
+
 ## Mechanical differences are evidence, not verdicts
 
 Offline checks parse Markdown and compare structure, references, code, and metadata.
@@ -116,5 +156,6 @@ The historical audit is a dated snapshot, not a guarantee of future coverage.
 ## Related documentation
 
 - [Review a pull request](../user-guide.md).
+- [Extend the reviewer](../how-to-guides/extending-the-reviewer.md).
 - [Settings and limits](../references/configuration.md).
 - [Troubleshoot unexpected findings](../how-to-guides/troubleshooting.md).

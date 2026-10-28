@@ -15,6 +15,7 @@ For a guided introduction, start with the [first-review tutorial](../tutorials/f
 | Configure a provider and run independent review tasks         | [LLM review](../user-guide.md#configure-llm-review)           |
 | Check published pages and prepare an issue draft              | [Published references](../user-guide.md#published-references) |
 | Recover from failed requests or save conflicts                | [Troubleshooting](troubleshooting.md)                         |
+| Add checks, tasks, providers, or runtime features             | [Extend the reviewer](extending-the-reviewer.md)              |
 | Preview and publish the documentation                         | [Publish to GitHub Pages](../publishing.md)                   |
 
 For application builds and tests, see the

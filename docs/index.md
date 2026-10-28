@@ -31,16 +31,17 @@ to correct the example and download a draft.
 
 ## Choose your next task
 
-| Your goal                                          | Start here                                             |
-| -------------------------------------------------- | ------------------------------------------------------ |
-| Try a complete review without provider setup       | [First-review tutorial](tutorials/first-review.md)     |
-| Load a real pull request and edit its translations | [User guide](user-guide.md#load-a-pull-request)        |
-| Run a desktop app that can save drafts locally     | [Desktop workflow](user-guide.md#run-as-a-desktop-app) |
-| Configure optional AI review                       | [LLM setup](user-guide.md#configure-llm-review)        |
-| Look up defaults and limits                        | [Configuration reference](references/configuration.md) |
-| Understand what the checks can and cannot prove    | [How review works](explanations/how-review-works.md)   |
-| Fix a loading, runtime, or save problem            | [Troubleshooting](how-to-guides/troubleshooting.md)    |
-| Publish this documentation                         | [GitHub Pages guide](publishing.md)                    |
+| Your goal                                          | Start here                                                     |
+| -------------------------------------------------- | -------------------------------------------------------------- |
+| Try a complete review without provider setup       | [First-review tutorial](tutorials/first-review.md)             |
+| Load a real pull request and edit its translations | [User guide](user-guide.md#load-a-pull-request)                |
+| Run a desktop app that can save drafts locally     | [Desktop workflow](user-guide.md#run-as-a-desktop-app)         |
+| Configure optional AI review                       | [LLM setup](user-guide.md#configure-llm-review)                |
+| Look up defaults and limits                        | [Configuration reference](references/configuration.md)         |
+| Understand what the checks can and cannot prove    | [How review works](explanations/how-review-works.md)           |
+| Add a check, AI task, provider, or runtime feature | [Extend the reviewer](how-to-guides/extending-the-reviewer.md) |
+| Fix a loading, runtime, or save problem            | [Troubleshooting](how-to-guides/troubleshooting.md)            |
+| Publish this documentation                         | [GitHub Pages guide](publishing.md)                            |
 
 ## Browser or desktop?
 
