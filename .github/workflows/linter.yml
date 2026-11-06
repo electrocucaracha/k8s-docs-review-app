@@ -48,7 +48,7 @@ jobs:
       contents: read
       models: read
       issues: write
-    uses: electrocucaracha/gh-workflows/.github/workflows/linter.yml@5459142baf98c47e96f454bb56e3e549c334a606 # v13.1.1
+    uses: electrocucaracha/gh-workflows/.github/workflows/linter.yml@e9ab3de8b687cdf1475bc58cf0cdbf630c5419e3 # v13.2.0
     with:
       # Oxlint/tsc own TS/TSX; Stylelint owns CSS; Black owns Python formatting.
       # Pre-commit needs npm dependencies; Clippy needs Tauri's native libraries.
