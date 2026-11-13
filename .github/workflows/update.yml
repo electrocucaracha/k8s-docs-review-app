@@ -22,6 +22,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    uses: electrocucaracha/gh-workflows/.github/workflows/update.yml@e9ab3de8b687cdf1475bc58cf0cdbf630c5419e3 # v13.2.0
+    uses: electrocucaracha/gh-workflows/.github/workflows/update.yml@eaf817d527a52410bd6e85ad08a5acbd2039ae3a # v13.3.1
     secrets:
       WORKFLOW_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
