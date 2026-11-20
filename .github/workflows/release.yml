@@ -15,4 +15,4 @@ jobs:
   release:
     permissions:
       contents: write
-    uses: electrocucaracha/gh-workflows/.github/workflows/release.yml@eaf817d527a52410bd6e85ad08a5acbd2039ae3a # v13.3.1
+    uses: electrocucaracha/gh-workflows/.github/workflows/release.yml@71e4e96b50b203c2b8e7d680859c5c3136d8acc3 # v14.1.1
